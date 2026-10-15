@@ -2,22 +2,40 @@
 
 Terraform for the static sites machinebehavior.io and tychat.io: a private S3 bucket per site behind CloudFront, certificates from ACM, DNS in Route 53, and access logs that never record an IP address. The sites moved here from GitHub Pages, which keeps no access logs, so there were no visit statistics at all.
 
-The repository is public on purpose. It shows a complete infrastructure-as-code pipeline in which the CI system holds no cloud credentials.
+The repository is public on purpose: every artifact of the work is here to audit. It shows an infrastructure-as-code pipeline in which GitHub stores no cloud credential. Each job exchanges its short-lived GitHub OIDC token for a role that can do that job and nothing else. What cannot be public (the account id, the state, the log data) stays in AWS and on the operator host, and the sites show counts only.
 
 ## How a change ships
 
-1. **Pull request.** CI (`.github/workflows/ci.yml`) runs `terraform fmt -check`, `terraform validate` on every stack, `terraform test` on every module with a mocked AWS provider, tflint with the AWS ruleset, a trivy configuration scan, and zizmor on the workflow itself. CI has no AWS credentials and cannot reach AWS.
-2. **Plan.** The operator runs `scripts/tf.sh <stack> plan` on the one host that holds AWS credentials. The script refuses a dirty working tree, saves the plan, and writes a summary with counts only (`scripts/plan_summary.py`: actions per resource type, no names, ids or values). The summary goes into the pull request description.
-3. **Review and merge.** The repository owner approves.
-4. **Apply.** `scripts/tf.sh <stack> apply` applies the saved plan and nothing else.
+1. **Pull request.** Two workflows run.
+   - `ci.yml`, with no AWS access: `terraform fmt -check`, `terraform validate` on every stack, `terraform test` on every module with a mocked AWS provider, tflint with the AWS ruleset, shellcheck, a trivy configuration scan, and zizmor on the workflows.
+   - `terraform.yml`, job "Plan": assumes the read-only plan role, plans every stack with `-lock=false`, and comments the counts on the pull request (`scripts/plan_summary.py`: actions per resource type, never a name, id or value). The full plan stays on the runner. Fork pull requests get no OIDC token, and no workflow uses `pull_request_target`.
+2. **Review and merge.** The repository owner approves the pull request.
+3. **Apply.** On the push to main, job "Apply" waits in the `production` environment until the owner approves it. Then it assumes the apply role and plans and applies the shared and site stacks.
+4. **Bootstrap changes** (IAM, the state bucket) show in the pull request's plan. The operator applies them by hand (below).
 
-### Credentials
+### Roles
 
-- Long-lived AWS credentials exist on the operator host only. GitHub stores no AWS secret.
-- Content deploys from a site repository use GitHub OIDC: the workflow exchanges its short-lived token for a role (`modules/github-deploy-role`) that accepts one repository and one branch, and may only sync one bucket and invalidate one distribution.
-- The stats job reads the access logs through a read-only role on the log bucket (`modules/log-bucket`, `reader_principal_arns`).
-- Every stack sets `allowed_account_ids`, so a plan against the wrong account fails before it reads anything.
-- Account id, zone ids and bucket names live in local tfvars on the operator host (`~/.config/site-infra/<stack>.tfvars`), never in this repository.
+| Role | Trusted by | May |
+|---|---|---|
+| `site-infra-terraform-plan` | pull request jobs of this repository | read the state and the tfvars, read the managed resources and IAM metadata; write nothing |
+| `site-infra-terraform-apply` | jobs in the `production` environment of this repository | write the managed buckets, CloudFront, certificates in us-east-1, records in the site zones, log delivery, and the shared and site state. No IAM action at all; no write to the bootstrap state, the tfvars or the state bucket's settings |
+| `<site>-github-deploy` | the main branch of the site repository | list and write that site's bucket, invalidate that site's distribution |
+| `site-infra-access-logs-<suffix>-reader` | the operator host's stats job | list and read the log bucket |
+
+All IAM lives in the bootstrap stack. The apply role cannot create, change or attach a role or policy, so nothing that CI runs can widen its own access. `scripts/role-boundaries.sh` checks 16 of these limits with the IAM policy simulator after each bootstrap apply.
+
+### Configuration that stays private
+
+- Account id, zone ids and bucket names are in each stack's tfvars. The operator keeps them in `~/.config/site-infra/` and copies them into the state bucket (`scripts/tf.sh <stack> push-vars`), where the CI roles read them and the apply role cannot change them. CI masks their values and the account id in the log.
+- The repository variables `TF_STATE_BUCKET` and `AWS_PLAN_ROLE_ARN`, and the variable `AWS_APPLY_ROLE_ARN` of the `production` environment, hold the rest.
+- Every stack sets `allowed_account_ids`, so a run against the wrong account fails before it reads anything.
+
+### Break-glass
+
+The long-lived credentials of the operator host (an IAM user with administrator access) do two things only:
+
+1. **Bootstrap**: the first run, and every later change to IAM or the state bucket. `scripts/tf.sh bootstrap plan`, read the summary, `scripts/tf.sh bootstrap apply`, then `scripts/role-boundaries.sh`.
+2. **Repair**: when the workflow cannot run (GitHub down, a broken role, a stuck lock), `scripts/tf.sh <stack> plan` and `apply` for any stack, from a clean checkout of main. Every use gets a note in the pull request or issue that follows.
 
 ### Pins
 
@@ -40,16 +58,23 @@ modules/
   static-site/         site bucket, OAC, CloudFront, ACM certificate, viewer-request
                        function, security headers, standard logging v2, Route 53 records
   github-deploy-role/  OIDC role for one repository's deploy job
+  terraform-ci-roles/  OIDC plan role (pull requests) and apply role (production environment)
+  log-reader-role/     read-only role of the stats job
 live/
-  bootstrap/           the state bucket (first run on local state, then migrated)
-  shared/              log bucket and the GitHub OIDC provider
+  bootstrap/           state bucket, OIDC provider, every IAM role (operator only)
+  shared/              log bucket
   machinebehavior.io/  the site, with the cutover switches
 scripts/
-  tf.sh                plan and apply on the operator host
+  tf.sh                plan and apply on the operator host (bootstrap, break-glass)
+  role-boundaries.sh   IAM policy simulator checks of the roles
   plan_summary.py      counts-only plan summary
   deploy-site.sh       sync a built site to its bucket and invalidate
   parity.py            compare a host under test with the live site
+  ci/terraform.sh      keyless plan and apply in GitHub Actions
   ci/install-tools.sh  pinned CI tools, sha256 checked
+docs/
+  adr/                 decision records
+  cutover-machinebehavior.io.md
 stats/
   cloudfront_to_loki.py  access logs -> Loki, without IP addresses or User-Agent strings
   site-traffic.*         systemd user timer that runs it every 5 minutes
@@ -69,7 +94,7 @@ rm backend_override.tf
 terraform init -migrate-state -backend-config=$HOME/.config/site-infra/backend.hcl
 ```
 
-Then `shared`, then each site, with `scripts/tf.sh`.
+Then `shared`, then each site, with `scripts/tf.sh`. A new site needs its bucket name and zone in the bootstrap tfvars first (the apply role writes only listed buckets and zones), and its distribution id after the first site apply (for its deploy role).
 
 ## Cutover from GitHub Pages
 
@@ -98,7 +123,7 @@ Install on the operator host:
 ```bash
 cat >> ~/.aws/config <<'EOF'
 [profile site-logs-reader]
-role_arn = <log_reader_role_arn output of the shared stack>
+role_arn = <log_reader_role_arn output of the bootstrap stack>
 source_profile = default
 EOF
 printf 'LOG_BUCKET=<log bucket>\nAWS_PROFILE=site-logs-reader\nLOKI_URL=http://localhost:3100\n' > ~/.config/site-infra/site-traffic.env
@@ -110,3 +135,7 @@ systemctl --user daemon-reload && systemctl --user enable --now site-traffic.tim
 ## Accepted findings
 
 trivy findings that are accepted, each with its reason, are in `.trivyignore.yaml`: SSE-S3 instead of customer managed KMS keys, no S3 server access logging, no WAF in front of a static origin. A new finding fails CI until it is fixed or recorded there.
+
+## Next: a self-hosted runner in the enterprise pattern
+
+Planned, not built. Enterprises often run Terraform on their own runners, inside their network. The next step reproduces that pattern without weakening the current one: ephemeral just-in-time runners in their own VPC and private subnet, in an organisation with a runner group limited to this repository, reachable only by push-to-main, `workflow_dispatch` and `production` jobs. The reasoning and the threat model are in [ADR-0002](docs/adr/0002-self-hosted-runner-enterprise-pattern.md).
