@@ -4,7 +4,7 @@ variable "canonical_host" {
 }
 
 variable "www_host" {
-  description = "Host that answers 301 to the canonical host once attach_canonical_hosts is true. Null: no www host."
+  description = "Host that is a CNAME to the canonical host and, once attach_canonical_hosts is true, answers 301 to it from CloudFront. Null: no www host."
   type        = string
   default     = null
 }
@@ -37,7 +37,7 @@ variable "attach_canonical_hosts" {
 }
 
 variable "dns_target" {
-  description = "Stage 2 of the cutover: where the canonical and www records point. github_pages keeps the old values, cloudfront switches them."
+  description = "Stage 2 of the cutover: where the canonical (apex) records point. github_pages keeps the old addresses, cloudfront switches them. www follows the apex."
   type        = string
   default     = "github_pages"
 
@@ -53,7 +53,7 @@ variable "dns_target" {
 }
 
 variable "dns_ttl" {
-  description = "TTL in seconds of the canonical and www records while they hold plain values. Lower it a day before the cutover."
+  description = "TTL in seconds of the apex records while they hold plain addresses, and of the www CNAME. Lower it a day before the cutover."
   type        = number
   default     = 300
 
@@ -64,16 +64,14 @@ variable "dns_ttl" {
 }
 
 variable "github_pages" {
-  description = "The GitHub Pages record values, used while dns_target is github_pages and to roll back."
+  description = "The GitHub Pages addresses of the apex, used while dns_target is github_pages and to roll back."
   type = object({
-    ipv4  = list(string)
-    ipv6  = list(string)
-    cname = string
+    ipv4 = list(string)
+    ipv6 = list(string)
   })
   default = {
-    ipv4  = ["185.199.108.153", "185.199.109.153", "185.199.110.153", "185.199.111.153"]
-    ipv6  = ["2606:50c0:8000::153", "2606:50c0:8001::153", "2606:50c0:8002::153", "2606:50c0:8003::153"]
-    cname = "uncovertechtalent.github.io"
+    ipv4 = ["185.199.108.153", "185.199.109.153", "185.199.110.153", "185.199.111.153"]
+    ipv6 = ["2606:50c0:8000::153", "2606:50c0:8001::153", "2606:50c0:8002::153", "2606:50c0:8003::153"]
   }
 }
 

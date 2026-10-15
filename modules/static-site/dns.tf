@@ -1,7 +1,10 @@
 # DNS for the site. The test host points at CloudFront from the start. The
-# canonical (apex) and www records hold the GitHub Pages values until
+# canonical (apex) records hold the GitHub Pages addresses until
 # dns_target = cloudfront; the switch is an in-place update of the same
 # records, and setting dns_target back to github_pages rolls it back.
+# www is a CNAME to the apex in every stage, so it follows the apex. It must
+# not point into github.io: github.io publishes CAA records that do not allow
+# Amazon, and ACM then refuses the certificate for www (CAA_ERROR).
 # Import the existing apex and www records before the first apply (see the
 # import blocks in the root stack).
 
@@ -46,5 +49,5 @@ resource "aws_route53_record" "www" {
   name    = var.www_host
   type    = "CNAME"
   ttl     = var.dns_ttl
-  records = [local.serve_from_cloudfront ? aws_cloudfront_distribution.this.domain_name : var.github_pages.cname]
+  records = [var.canonical_host]
 }

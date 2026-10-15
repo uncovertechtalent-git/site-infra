@@ -75,10 +75,12 @@ Each site stack has two switches. GitHub Pages keeps deploying the whole time, s
 | Stage | `attach_canonical_hosts` | `dns_target` | Effect |
 |---|---|---|---|
 | 0 | `false` | `github_pages` | The test host (`next.`) serves the site from CloudFront. Apex and www unchanged. |
-| 1 | `true` | `github_pages` | Apex and www attached to the distribution; www answers 301 to the apex. DNS unchanged, so this can be tested with `parity.py --connect-to <distribution domain>`. |
-| 2 | `true` | `cloudfront` | Apex A/AAAA become aliases of the distribution; www CNAME points at it. |
+| 1 | `true` | `github_pages` | Apex and www attached to the distribution; on CloudFront www answers 301 to the apex. DNS unchanged, so this can be tested with `parity.py --connect-to <distribution domain>`. |
+| 2 | `true` | `cloudfront` | Apex A/AAAA become aliases of the distribution. www follows. |
 
-Rollback from stage 2: `dns_target = "github_pages"`. The apex and www records are the same Terraform resources in every stage (imported once from the GitHub Pages setup), so each switch is an in-place, atomic Route 53 change. Lower `dns_ttl` to 60 a day before stage 2.
+www is a CNAME to the apex in every stage, so only the apex records ever switch. It must not point into github.io (the GitHub Pages default): github.io publishes CAA records that allow three certificate authorities, Amazon not among them, and ACM refuses a certificate for www with `CAA_ERROR`. GitHub Pages serves www the same way through the apex addresses.
+
+Rollback from stage 2: `dns_target = "github_pages"`. The apex records are the same Terraform resources in every stage (imported once from the GitHub Pages setup), so each switch is an in-place, atomic Route 53 change. Lower `dns_ttl` to 60 a day before stage 2.
 
 ## Access logs and privacy
 

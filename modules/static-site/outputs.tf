@@ -29,7 +29,7 @@ output "distribution_hosts" {
 }
 
 output "dns_target" {
-  description = "Where the canonical and www records point."
+  description = "Where the apex records point (www follows the apex)."
   value       = var.dns_target
 }
 

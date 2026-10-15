@@ -75,8 +75,8 @@ run "stage_0_serves_the_test_host_only" {
   }
 
   assert {
-    condition     = aws_route53_record.www[0].records == toset(["uncovertechtalent.github.io"])
-    error_message = "The www record keeps the GitHub Pages value."
+    condition     = aws_route53_record.www[0].records == toset(["example.org"])
+    error_message = "www is a CNAME to the apex, never into github.io (CAA)."
   }
 
   assert {
@@ -178,8 +178,8 @@ run "stage_2_points_dns_at_cloudfront" {
   }
 
   assert {
-    condition     = aws_route53_record.www[0].records == toset(["d111111abcdef8.cloudfront.net"])
-    error_message = "Stage 2 points www at the distribution."
+    condition     = aws_route53_record.www[0].records == toset(["example.org"])
+    error_message = "In stage 2 www still follows the apex."
   }
 }
 

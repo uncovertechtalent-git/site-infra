@@ -4,18 +4,20 @@
 # ${SITE_INFRA_CONFIG:-~/.config/site-infra}: backend.hcl (state bucket) and
 # <stack>.tfvars (account id, zone id, bucket names).
 #
-#   scripts/tf.sh <stack> plan     saved plan + counts-only summary for the pull request
-#   scripts/tf.sh <stack> apply    applies the saved plan, nothing else
-#   scripts/tf.sh <stack> output   stack outputs (stay on the host)
+#   scripts/tf.sh <stack> plan [args]  saved plan + counts-only summary for the pull request;
+#                                      args go to terraform plan (-replace=..., -target=...)
+#   scripts/tf.sh <stack> apply        applies the saved plan, nothing else
+#   scripts/tf.sh <stack> output       stack outputs (stay on the host)
 #
 # plan refuses a dirty working tree, so every plan maps to a commit.
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-  echo "usage: $0 <stack> plan|apply|output" >&2
+if [ "$#" -lt 2 ]; then
+  echo "usage: $0 <stack> plan [terraform plan args] | apply | output" >&2
   exit 2
 fi
 stack="$1" action="$2"
+shift 2
 root="$(cd "$(dirname "$0")/.." && pwd)"
 dir="$root/live/$stack"
 conf="${SITE_INFRA_CONFIG:-$HOME/.config/site-infra}"
@@ -33,7 +35,7 @@ case "$action" in
     fi
     init
     mkdir -p "$plans"
-    tf plan -input=false -var-file="$conf/$stack.tfvars" -out="$plans/$stack.tfplan"
+    tf plan -input=false -var-file="$conf/$stack.tfvars" -out="$plans/$stack.tfplan" "$@"
     tf show -json "$plans/$stack.tfplan" \
       | python3 "$root/scripts/plan_summary.py" --stack "$stack" --commit "$(git -C "$root" rev-parse --short HEAD)" \
       > "$plans/$stack.summary.md"
