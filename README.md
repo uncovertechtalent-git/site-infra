@@ -50,6 +50,9 @@ scripts/
   deploy-site.sh       sync a built site to its bucket and invalidate
   parity.py            compare a host under test with the live site
   ci/install-tools.sh  pinned CI tools, sha256 checked
+stats/
+  cloudfront_to_loki.py  access logs -> Loki, without IP addresses or User-Agent strings
+  site-traffic.*         systemd user timer that runs it every 5 minutes
 ```
 
 State: one key per stack in the state bucket, locked with the S3 lock file (`use_lockfile = true`), no DynamoDB table.
@@ -85,6 +88,22 @@ Rollback from stage 2: `dns_target = "github_pages"`. The apex records are the s
 ## Access logs and privacy
 
 CloudFront standard logging (v2) delivers gzipped JSON lines to the log bucket, one prefix per site. The recorded fields are listed in `modules/static-site/variables.tf` (`log_record_fields`). The viewer IP address, port, `X-Forwarded-For`, cookies and the query string are never recorded; a variable validation refuses them and a test checks the default. CloudFront reports the country itself (`c-country`), so no IP address is needed for the country count. Raw logs expire after 30 days.
+
+`stats/cloudfront_to_loki.py` turns the logs into visit statistics. A systemd user timer on the operator host runs it every 5 minutes: it mirrors the log prefix with the read-only reader role, and pushes one Loki line per request to the stream `{job="site-traffic", site, agent}`. Each line keeps the path, status, page or asset, browser or bot (with the bot's name), country, referrer host and cache result. The User-Agent string and the full referrer URL stay in the raw logs only, so Loki never sees them. The Grafana dashboard "Site traffic" counts page views, top pages, countries, referrers, crawlers and status codes.
+
+Install on the operator host:
+
+```bash
+cat >> ~/.aws/config <<'EOF'
+[profile site-logs-reader]
+role_arn = <log_reader_role_arn output of the shared stack>
+source_profile = default
+EOF
+printf 'LOG_BUCKET=<log bucket>\nAWS_PROFILE=site-logs-reader\nLOKI_URL=http://localhost:3100\n' > ~/.config/site-infra/site-traffic.env
+mkdir -p ~/.config/systemd/user
+ln -sf ~/code/site-infra/stats/site-traffic.service ~/code/site-infra/stats/site-traffic.timer ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now site-traffic.timer
+```
 
 ## Accepted findings
 

@@ -82,6 +82,9 @@ jobs:
       - name: shellcheck (preinstalled on the runner image)
         run: shellcheck scripts/*.sh scripts/ci/*.sh
 
+      - name: Python scripts compile
+        run: python3 -m py_compile scripts/*.py stats/*.py
+
   trivy:
     name: trivy config scan
     runs-on: ubuntu-24.04

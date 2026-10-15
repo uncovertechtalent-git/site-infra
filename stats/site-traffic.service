@@ -1,0 +1,14 @@
+# systemd user unit: ship new CloudFront access logs to Loki.
+# Install: README, "Access logs and privacy". Settings: ~/.config/site-infra/site-traffic.env
+# (LOG_BUCKET, AWS_PROFILE of the read-only reader role, LOKI_URL).
+[Unit]
+Description=Ship CloudFront access logs to Loki (site traffic)
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/site-infra/site-traffic.env
+ExecStart=/usr/bin/python3 %h/code/site-infra/stats/cloudfront_to_loki.py
+Nice=10
+NoNewPrivileges=yes
+PrivateTmp=yes
