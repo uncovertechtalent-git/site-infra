@@ -1,0 +1,34 @@
+# Dependabot keeps three kinds of pins current, each after a 7-day cooldown so
+# a release that is pulled in its first week never reaches a pull request:
+# the commit-SHA pin of actions/checkout, the zizmor version and wheel hashes,
+# and the AWS provider pinned in each stack (live/*, lock files included).
+# The CI tools in scripts/ci/install-tools.sh are bumped by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+  - package-ecosystem: pip
+    directory: "/.github/zizmor"
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: terraform
+    directories:
+      - "/live/*"
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      terraform:
+        patterns:
+          - "*"

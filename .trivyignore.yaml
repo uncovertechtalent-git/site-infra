@@ -1,0 +1,30 @@
+# Accepted trivy findings. Each entry names the paths it covers and the reason.
+# A new finding fails the pipeline until it is fixed or recorded here.
+misconfigurations:
+  - id: AWS-0132
+    paths:
+      - "modules/state-bucket/main.tf"
+      - "modules/log-bucket/main.tf"
+      - "modules/static-site/main.tf"
+    statement: >-
+      SSE-S3 (AES256) encrypts every object at rest. A customer managed KMS key
+      would add a second access check, but access is already limited by the
+      bucket policies and IAM. The site bucket holds public pages, the log
+      bucket holds no IP addresses, and the state holds no secrets.
+  - id: AWS-0089
+    paths:
+      - "modules/state-bucket/main.tf"
+      - "modules/log-bucket/main.tf"
+      - "modules/static-site/main.tf"
+    statement: >-
+      No S3 server access logging. Reads of the site bucket arrive only through
+      CloudFront, whose access logs are on. Logging the log bucket into itself
+      would loop. Changes to all three buckets are management events in
+      CloudTrail.
+  - id: AWS-0011
+    paths:
+      - "modules/static-site/cdn.tf"
+    statement: >-
+      No WAF. The origin is a private bucket of static files: no forms, no
+      origin compute, no login. AWS Shield Standard covers every distribution
+      at no charge. Revisit if the site gains a dynamic origin.

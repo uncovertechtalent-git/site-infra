@@ -1,0 +1,129 @@
+name: CI
+
+# Static checks and unit tests for every module and stack. This workflow holds
+# no cloud credentials and cannot reach AWS: plans and applies run on the
+# operator's host, which keeps the only AWS credentials (README, "How a change
+# ships"). Tools are installed by version and sha256 (scripts/ci/install-tools.sh);
+# the only action is actions/checkout, pinned to a commit.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Terraform fmt, validate, test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install terraform (pinned, sha256 checked)
+        run: scripts/ci/install-tools.sh terraform
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      - name: terraform validate (stacks, providers from the committed lock files)
+        run: |
+          for d in live/*/; do
+            echo "::group::$d"
+            terraform -chdir="$d" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="$d" validate
+            echo "::endgroup::"
+          done
+
+      - name: terraform test (modules, mocked AWS provider)
+        run: |
+          for d in modules/*/; do
+            echo "::group::$d"
+            terraform -chdir="$d" init -backend=false -input=false
+            terraform -chdir="$d" test
+            echo "::endgroup::"
+          done
+
+  tflint:
+    name: tflint and shellcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tflint (pinned, sha256 checked)
+        run: scripts/ci/install-tools.sh tflint
+
+      - name: tflint --init (plugin pinned in .tflint.hcl, signature checked)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+
+      - name: tflint
+        run: tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl" --format compact
+
+      - name: shellcheck (preinstalled on the runner image)
+        run: shellcheck scripts/*.sh scripts/ci/*.sh
+
+  trivy:
+    name: trivy config scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install trivy (pinned, sha256 checked)
+        run: scripts/ci/install-tools.sh trivy
+
+      - name: trivy config
+        # --skip-check-update uses the checks built into the pinned binary, so a scan
+        # result changes only when the pin changes. Accepted findings: .trivyignore.yaml.
+        run: >-
+          trivy config --exit-code 1 --skip-check-update
+          --severity LOW,MEDIUM,HIGH,CRITICAL
+          --ignorefile .trivyignore.yaml
+          .
+
+  zizmor:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor (version and wheel hashes pinned in .github/zizmor/requirements.txt)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zizmor"
+          "$RUNNER_TEMP/zizmor/bin/pip" install --require-hashes --no-deps --only-binary :all: -r .github/zizmor/requirements.txt
+
+      - name: zizmor .github
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/zizmor/bin/zizmor" --format github .github'
