@@ -83,6 +83,8 @@ Each site stack has two switches. GitHub Pages keeps deploying the whole time, s
 
 www is a CNAME to the apex in every stage, so only the apex records ever switch. It must not point into github.io (the GitHub Pages default): github.io publishes CAA records that allow three certificate authorities, Amazon not among them, and ACM refuses a certificate for www with `CAA_ERROR`. GitHub Pages serves www the same way through the apex addresses.
 
+Step by step, with the checks: [docs/cutover-machinebehavior.io.md](docs/cutover-machinebehavior.io.md).
+
 Rollback from stage 2: `dns_target = "github_pages"`. The apex records are the same Terraform resources in every stage (imported once from the GitHub Pages setup), so each switch is an in-place, atomic Route 53 change. Lower `dns_ttl` to 60 a day before stage 2.
 
 ## Access logs and privacy

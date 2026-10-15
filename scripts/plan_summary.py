@@ -51,7 +51,8 @@ def main():
     head = ", ".join(f"{totals[c]} to {c}" for c in COLUMNS)
     print(f"**Plan `{args.stack}`** at `{args.commit}`, Terraform {version}: {head}.")
     if drift:
-        print(f"\nDrift: {drift} resource(s) changed outside Terraform since the last apply.")
+        print(f"\nRefresh: {drift} resource(s) read back with attributes that changed since the last apply "
+              "(computed ones included); the counts above already account for them.")
     if not per_type:
         print("\nNo changes.")
         return
