@@ -25,8 +25,12 @@ summary="$work/summary.md"
 mkdir -p "$work"
 : > "$summary"
 
-echo "::add-mask::${AWS_ROLE_ARN:?}"
-echo "::add-mask::${TF_STATE_BUCKET:?}"
+if [ -z "${AWS_ROLE_ARN:-}" ] || [ -z "${TF_STATE_BUCKET:-}" ]; then
+  echo "::error::the role ARN or TF_STATE_BUCKET secret is not set for this job (README, \"Configuration that stays private\")"
+  exit 1
+fi
+echo "::add-mask::$AWS_ROLE_ARN"
+echo "::add-mask::$TF_STATE_BUCKET"
 
 token=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?}" \
   "${ACTIONS_ID_TOKEN_REQUEST_URL:?}&audience=sts.amazonaws.com" | jq -r .value)
