@@ -92,15 +92,19 @@ def redirect_probes(paths):
 
 
 def compare(path, ref, cand, ref_host, cand_host):
-    r_status, r_head, r_body = ref.get(path)
-    c_status, c_head, c_body = cand.get(path)
+    try:
+        r_status, r_head, r_body = ref.get(path)
+        c_status, c_head, c_body = cand.get(path)
+    except OSError as exc:  # DNS, connect, TLS: report the URL, keep going
+        return path, 0, 0, [f"request failed: {exc}"], []
     issues, notes = [], []
     if r_status != c_status:
         issues.append(f"status {r_status} vs {c_status}")
     r_loc = r_head.get("location", "").replace(f"//{ref_host}", f"//{cand_host}")
     if r_loc != c_head.get("location", ""):
         issues.append(f"location {r_head.get('location')} vs {c_head.get('location')}")
-    if r_head.get("content-type") != c_head.get("content-type"):
+    # A redirect's body is never shown, so its Content-Type is not compared.
+    if not 300 <= r_status < 400 and r_head.get("content-type") != c_head.get("content-type"):
         issues.append(f"content-type {r_head.get('content-type')} vs {c_head.get('content-type')}")
     if r_status == 200 and r_head.get("cache-control") != c_head.get("cache-control"):
         issues.append(f"cache-control {r_head.get('cache-control')} vs {c_head.get('cache-control')}")

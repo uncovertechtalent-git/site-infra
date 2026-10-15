@@ -17,7 +17,7 @@ fi
 src="${1%/}" bucket="$2" distribution="$3"
 [ -f "$src/index.html" ] || { echo "no index.html in $src" >&2; exit 2; }
 
-cache_control="public, max-age=600"
+cache_control="max-age=600"
 exclude=(--exclude ".git/*" --exclude ".github/*" --exclude "CNAME" --exclude ".nojekyll")
 
 # Filters apply in order, the last match wins: the excludes come after each include.
