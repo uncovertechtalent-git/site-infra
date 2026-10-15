@@ -37,6 +37,7 @@ types=(
   "yaml|text/yaml"
   "jsonl|application/octet-stream"
   "py|application/octet-stream"
+  "pyc|application/octet-stream"
 )
 
 for entry in "${types[@]}"; do

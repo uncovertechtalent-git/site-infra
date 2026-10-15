@@ -126,13 +126,18 @@ def main():
     parser.add_argument("--reference", required=True, help="live site, for example https://example.org")
     parser.add_argument("--candidate", required=True, help="host under test, for example https://next.example.org")
     parser.add_argument("--connect-to", help="address to send the candidate's requests to")
+    parser.add_argument("--paths", help="file with more paths to compare, one per line (for example every file of the build)")
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
 
     ref = Client(args.reference)
     cand = Client(args.candidate, args.connect_to)
     paths = sitemap_paths(ref)
-    probes = sorted(set(paths + FIXED_PROBES + redirect_probes(paths)))
+    extra = []
+    if args.paths:
+        with open(args.paths, encoding="utf-8") as fh:
+            extra = [urllib.parse.quote(line.strip()) for line in fh if line.strip()]
+    probes = sorted(set(paths + FIXED_PROBES + redirect_probes(paths) + extra))
 
     with concurrent.futures.ThreadPoolExecutor(args.workers) as pool:
         results = list(pool.map(lambda p: compare(p, ref, cand, ref.host, cand.host), probes))
@@ -145,7 +150,7 @@ def main():
 
     via = f" via {args.connect_to}" if args.connect_to else ""
     print(f"**Parity** {args.candidate}{via} against {args.reference}: {len(probes)} URLs "
-          f"({len(paths)} from the sitemap), {len(results) - len(failed)} match, {len(failed)} mismatch, "
+          f"({len(paths)} from the sitemap, {len(extra)} from --paths), {len(results) - len(failed)} match, {len(failed)} mismatch, "
           f"{len(differing)} with a different body.")
     print("Candidate status codes: " + ", ".join(f"{k}: {v}" for k, v in sorted(statuses.items())) + ".")
     if failed:
