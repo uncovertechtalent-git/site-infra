@@ -24,15 +24,3 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
-
-variable "log_reader_principal_arns" {
-  description = "IAM principals that may assume the log reader role (the stats job's identity). Set in local tfvars."
-  type        = list(string)
-  default     = []
-}
-
-variable "enable_github_oidc" {
-  description = "Create the IAM OIDC provider for GitHub Actions."
-  type        = bool
-  default     = false
-}

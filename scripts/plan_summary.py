@@ -16,8 +16,9 @@ ACTIONS = {
     ("delete",): "destroy",
     ("delete", "create"): "replace",
     ("create", "delete"): "replace",
+    ("forget",): "forget",
 }
-COLUMNS = ["create", "update", "replace", "destroy", "import"]
+COLUMNS = ["create", "update", "replace", "destroy", "import", "forget"]
 
 
 def summarise(plan):

@@ -19,14 +19,8 @@ variable "retention_days" {
   }
 }
 
-variable "reader_principal_arns" {
-  description = "IAM principals allowed to assume the read-only log reader role. Empty list: no role."
-  type        = list(string)
-  default     = []
-}
-
 variable "tags" {
-  description = "Tags for the bucket and the role, on top of the provider default tags."
+  description = "Tags for the bucket, on top of the provider default tags."
   type        = map(string)
   default     = {}
 }

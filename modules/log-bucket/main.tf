@@ -3,9 +3,8 @@
 # service, scoped to delivery sources in this account. The bucket holds access
 # logs only; each distribution writes under its own prefix. No ACLs: the bucket
 # owner owns every object. Objects expire after var.retention_days.
-#
-# Optional reader role: a narrow role for the stats job that pulls the logs
-# (s3:ListBucket and s3:GetObject on this bucket only).
+# The stats job reads it through the log-reader-role module (bootstrap stack:
+# IAM is only written there).
 
 data "aws_caller_identity" "current" {}
 
@@ -116,50 +115,6 @@ locals {
             "aws:SourceArn" = "arn:${local.partition}:logs:us-east-1:${local.account_id}:delivery-source:*"
           }
         }
-      },
-    ]
-  })
-}
-
-resource "aws_iam_role" "reader" {
-  count = length(var.reader_principal_arns) > 0 ? 1 : 0
-
-  name                 = "${var.bucket_name}-reader"
-  description          = "Reads CloudFront access logs for the site statistics job."
-  max_session_duration = 3600
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Principal = { AWS = var.reader_principal_arns }
-        Action    = "sts:AssumeRole"
-      },
-    ]
-  })
-
-  tags = var.tags
-}
-
-resource "aws_iam_role_policy" "reader" {
-  count = length(var.reader_principal_arns) > 0 ? 1 : 0
-
-  name = "read-access-logs"
-  role = aws_iam_role.reader[0].id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "ListLogs"
-        Effect   = "Allow"
-        Action   = "s3:ListBucket"
-        Resource = aws_s3_bucket.this.arn
-      },
-      {
-        Sid      = "ReadLogObjects"
-        Effect   = "Allow"
-        Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.this.arn}/*"
       },
     ]
   })

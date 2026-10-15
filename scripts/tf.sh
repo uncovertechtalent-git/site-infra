@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# Plan and apply one stack on the operator host, the only machine with AWS
-# credentials. Settings that must not enter this public repository stay in
-# ${SITE_INFRA_CONFIG:-~/.config/site-infra}: backend.hcl (state bucket) and
-# <stack>.tfvars (account id, zone id, bucket names).
+# Plan and apply one stack on the operator host: the bootstrap stack always
+# (it holds IAM and the state bucket), the others only as break-glass, when
+# the CI workflow cannot. Settings that must not enter this public repository
+# stay in ${SITE_INFRA_CONFIG:-~/.config/site-infra}: backend.hcl (state
+# bucket) and <stack>.tfvars (account id, zone ids, bucket names).
 #
 #   scripts/tf.sh <stack> plan [args]  saved plan + counts-only summary for the pull request;
 #                                      args go to terraform plan (-replace=..., -target=...)
 #   scripts/tf.sh <stack> apply        applies the saved plan, nothing else
 #   scripts/tf.sh <stack> output       stack outputs (stay on the host)
+#   scripts/tf.sh <stack> push-vars    copy <stack>.tfvars to the state bucket, where CI reads it
 #
 # plan refuses a dirty working tree, so every plan maps to a commit.
 set -euo pipefail
 
 if [ "$#" -lt 2 ]; then
-  echo "usage: $0 <stack> plan [terraform plan args] | apply | output" >&2
+  echo "usage: $0 <stack> plan [terraform plan args] | apply | output | push-vars" >&2
   exit 2
 fi
 stack="$1" action="$2"
@@ -51,6 +53,11 @@ case "$action" in
   output)
     init
     tf output
+    ;;
+  push-vars)
+    bucket="$(sed -n 's/^bucket *= *"\(.*\)"$/\1/p' "$conf/backend.hcl")"
+    aws s3 cp --only-show-errors --sse AES256 "$conf/$stack.tfvars" "s3://$bucket/site-infra/tfvars/$stack.tfvars"
+    echo "pushed $stack.tfvars"
     ;;
   *)
     echo "unknown action: $action" >&2

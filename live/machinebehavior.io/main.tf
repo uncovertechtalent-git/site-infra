@@ -43,20 +43,3 @@ import {
   to = module.site.aws_route53_record.www[0]
   id = "${var.zone_id}_www.${local.canonical_host}_CNAME"
 }
-
-data "aws_iam_openid_connect_provider" "github" {
-  count = var.enable_github_deploy ? 1 : 0
-
-  url = "https://token.actions.githubusercontent.com"
-}
-
-module "deploy_role" {
-  source = "../../modules/github-deploy-role"
-  count  = var.enable_github_deploy ? 1 : 0
-
-  role_name         = "${replace(local.canonical_host, ".", "-")}-github-deploy"
-  oidc_provider_arn = data.aws_iam_openid_connect_provider.github[0].arn
-  github_repository = var.github_repository
-  bucket_arn        = module.site.bucket_arn
-  distribution_arn  = module.site.distribution_arn
-}

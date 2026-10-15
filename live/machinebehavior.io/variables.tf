@@ -46,15 +46,3 @@ variable "dns_ttl" {
   type        = number
   default     = 300
 }
-
-variable "enable_github_deploy" {
-  description = "Create the OIDC deploy role for the site repository. Needs enable_github_oidc in the shared stack."
-  type        = bool
-  default     = false
-}
-
-variable "github_repository" {
-  description = "Repository whose main branch deploys the site."
-  type        = string
-  default     = "uncovertechtalent/machinebehavior.io"
-}

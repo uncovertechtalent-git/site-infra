@@ -27,8 +27,3 @@ output "log_prefix" {
   description = "Prefix of this site's access logs in the log bucket."
   value       = module.site.log_prefix
 }
-
-output "deploy_role_arn" {
-  description = "Role for the GitHub Actions deploy, or null while disabled."
-  value       = try(module.deploy_role[0].role_arn, null)
-}
