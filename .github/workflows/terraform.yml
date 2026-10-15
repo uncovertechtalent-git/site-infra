@@ -10,8 +10,11 @@ name: Terraform
 #   apply  trusts tokens of jobs in the "production" environment only. The
 #          environment allows main and needs the owner's approval.
 #
-# Role ARNs and the state bucket are repository and environment variables,
-# masked in the log. Plan output stays in files on the runner; the log, the
+# Role ARNs and the state bucket are GitHub secrets: none is a credential,
+# but the account id is in them, and only secrets are masked in a step's env
+# header (variables would print in clear before any script could mask them).
+# Repository secrets: TF_STATE_BUCKET, AWS_PLAN_ROLE_ARN. Environment secret
+# of production: AWS_APPLY_ROLE_ARN. Plan output stays in files on the runner; the log, the
 # job summary and the pull request comment show counts only.
 
 on:
@@ -60,8 +63,8 @@ jobs:
 
       - name: Plan every stack
         env:
-          AWS_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
-          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          AWS_ROLE_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
           AWS_REGION: eu-central-1
         run: scripts/ci/terraform.sh plan
 
@@ -102,7 +105,7 @@ jobs:
 
       - name: Plan and apply shared and site stacks
         env:
-          AWS_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
-          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          AWS_ROLE_ARN: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
           AWS_REGION: eu-central-1
         run: scripts/ci/terraform.sh apply

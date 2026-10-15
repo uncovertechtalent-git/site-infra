@@ -27,7 +27,7 @@ All IAM lives in the bootstrap stack. The apply role cannot create, change or at
 ### Configuration that stays private
 
 - Account id, zone ids and bucket names are in each stack's tfvars. The operator keeps them in `~/.config/site-infra/` and copies them into the state bucket (`scripts/tf.sh <stack> push-vars`), where the CI roles read them and the apply role cannot change them. CI masks their values and the account id in the log.
-- The repository variables `TF_STATE_BUCKET` and `AWS_PLAN_ROLE_ARN`, and the variable `AWS_APPLY_ROLE_ARN` of the `production` environment, hold the rest.
+- The repository secrets `TF_STATE_BUCKET` and `AWS_PLAN_ROLE_ARN`, and the secret `AWS_APPLY_ROLE_ARN` of the `production` environment, hold the rest. None of them is a credential; they are secrets because the account id is in them and GitHub masks only secrets in a step's log header (a variable prints in clear before any script can mask it). The scripts mask them again.
 - Every stack sets `allowed_account_ids`, so a run against the wrong account fails before it reads anything.
 
 ### Break-glass
