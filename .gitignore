@@ -1,0 +1,20 @@
+# Terraform working files and state never enter the repository.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Variables and backend settings are local to the operator's host.
+*.tfvars
+*.tfvars.json
+backend.hcl
+*_override.tf
+*_override.tf.json
+
+# Lock files are committed for the stacks (live/*) only; module tests resolve the provider fresh.
+modules/**/.terraform.lock.hcl
+
+# Python bytecode from running the scripts.
+__pycache__/
