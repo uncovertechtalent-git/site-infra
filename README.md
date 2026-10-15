@@ -138,4 +138,4 @@ trivy findings that are accepted, each with its reason, are in `.trivyignore.yam
 
 ## Next: a self-hosted runner in the enterprise pattern
 
-Planned, not built. Enterprises often run Terraform on their own runners, inside their network. The next step reproduces that pattern without weakening the current one: ephemeral just-in-time runners in their own VPC and private subnet, in an organisation with a runner group limited to this repository, reachable only by push-to-main, `workflow_dispatch` and `production` jobs. The reasoning and the threat model are in [ADR-0002](docs/adr/0002-self-hosted-runner-enterprise-pattern.md).
+Planned, not built. Enterprises often run Terraform on their own runners, inside their network. The next step reproduces that pattern without weakening the current one: ephemeral just-in-time runners in their own VPC and private subnet, in a runner group of the organisation limited to this repository, reachable only by push-to-main, `workflow_dispatch` and `production` jobs. The reasoning and the threat model are in [ADR-0002](docs/adr/0002-self-hosted-runner-enterprise-pattern.md).

@@ -12,7 +12,7 @@ Enterprises often run their infrastructure pipelines on their own runners. Their
 
 - **Its own network.** A dedicated VPC with private subnets only. No inbound rule, no public address. Egress through a NAT gateway, or VPC endpoints where they exist (STS, S3). No route or peering to any other VPC or host, the existing EC2 instance included.
 - **Ephemeral just-in-time runners.** A small controller asks GitHub for a just-in-time runner configuration per queued job, starts a fresh instance with it, and terminates the instance when the job ends. The runner takes one job and never sees a second one.
-- **An organisation, not a user account.** The repository moves to the organisation, where a runner group limits the runners to this repository and to named workflows.
+- **A runner group.** The repository lives in the organisation uncovertechtalent-git, where a runner group limits the runners to this repository and to named workflows.
 - **Only trusted triggers.** The runner label is used only by jobs that run on push to main, on `workflow_dispatch`, or in the `production` environment. Pull request jobs, and fork pull requests above all, stay on GitHub-hosted runners.
 - **Minimal instance identity.** IMDSv2 required, hop limit 1, so a container on the runner cannot reach the instance metadata. The instance role can only write its own logs and report itself done. AWS access for the job still comes from the job's OIDC role, exactly as on GitHub-hosted runners.
 - **Pinned image.** The runner image is built from a pinned base image and the pinned runner version, and its digest is recorded.
@@ -33,5 +33,5 @@ Enterprises often run their infrastructure pipelines on their own runners. Their
 ## Consequences
 
 - Cost: instances per job, a NAT gateway or endpoints, the controller. All small at this volume, and visible on the spend dashboard.
-- One more moving part to operate: the controller, the image builds, the organisation move.
+- More moving parts to operate: the controller and the image builds.
 - GitHub-hosted runners stay the default for everything that does not need the runner. A red-team exercise against the finished setup follows in its own session.

@@ -22,7 +22,7 @@ variable "state_bucket_name" {
 variable "github_repository" {
   description = "Repository whose Terraform workflow assumes the plan and apply roles."
   type        = string
-  default     = "uncovertechtalent/site-infra"
+  default     = "uncovertechtalent-git/site-infra"
 }
 
 variable "apply_environment" {

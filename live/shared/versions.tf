@@ -27,7 +27,7 @@ provider "aws" {
       Project    = "site-infra"
       Stack      = "shared"
       ManagedBy  = "terraform"
-      Repository = "uncovertechtalent/site-infra"
+      Repository = "uncovertechtalent-git/site-infra"
     }
   }
 }
