@@ -18,6 +18,23 @@ variable "github_repository" {
   }
 }
 
+variable "github_owner_id" {
+  description = "Numeric id of the repository owner. With github_repository_id set, the trust policy matches GitHub's immutable subject (repo:owner@id/name@id), which a renamed or re-created repository cannot reuse. Null: the plain repo:owner/name subject."
+  type        = number
+  default     = null
+}
+
+variable "github_repository_id" {
+  description = "Numeric id of the repository; see github_owner_id."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = (var.github_repository_id == null) == (var.github_owner_id == null)
+    error_message = "Set both github_owner_id and github_repository_id, or neither."
+  }
+}
+
 variable "github_ref" {
   description = "Git ref allowed to assume the role, used when github_environment is null."
   type        = string

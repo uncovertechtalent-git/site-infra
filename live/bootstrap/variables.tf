@@ -25,6 +25,18 @@ variable "github_repository" {
   default     = "uncovertechtalent-git/site-infra"
 }
 
+variable "github_owner_id" {
+  description = "Numeric id of the repository owner (public; GitHub's immutable OIDC subject uses it)."
+  type        = number
+  default     = 257729892
+}
+
+variable "github_repository_id" {
+  description = "Numeric id of the repository (public; GitHub's immutable OIDC subject uses it)."
+  type        = number
+  default     = 1421056340
+}
+
 variable "apply_environment" {
   description = "GitHub environment whose jobs may assume the apply role."
   type        = string
@@ -47,9 +59,11 @@ variable "log_reader_principal_arns" {
 }
 
 variable "sites" {
-  description = "One entry per site, keyed by its canonical host: the site repository, its bucket and zone, and its distribution once the site stack created it (null until then: no deploy role yet)."
+  description = "One entry per site, keyed by its canonical host: the site repository and its numeric owner and repository ids (GitHub's immutable OIDC subject), its bucket and zone, and its distribution once the site stack created it (null until then: no deploy role yet)."
   type = map(object({
     repository      = string
+    owner_id        = number
+    repository_id   = number
     bucket_name     = string
     zone_id         = string
     distribution_id = optional(string)

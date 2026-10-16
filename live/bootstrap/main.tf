@@ -33,6 +33,8 @@ module "terraform_ci_roles" {
 
   oidc_provider_arn    = aws_iam_openid_connect_provider.github.arn
   github_repository    = var.github_repository
+  github_owner_id      = var.github_owner_id
+  github_repository_id = var.github_repository_id
   apply_environment    = var.apply_environment
   state_bucket_name    = module.state_bucket.bucket_name
   managed_bucket_names = concat([var.log_bucket_name], [for s in values(var.sites) : s.bucket_name])
@@ -43,11 +45,13 @@ module "deploy_role" {
   source   = "../../modules/github-deploy-role"
   for_each = { for site, s in var.sites : site => s if s.distribution_id != null }
 
-  role_name         = "${replace(each.key, ".", "-")}-github-deploy"
-  oidc_provider_arn = aws_iam_openid_connect_provider.github.arn
-  github_repository = each.value.repository
-  bucket_arn        = "arn:${local.partition}:s3:::${each.value.bucket_name}"
-  distribution_arn  = "arn:${local.partition}:cloudfront::${var.aws_account_id}:distribution/${each.value.distribution_id}"
+  role_name            = "${replace(each.key, ".", "-")}-github-deploy"
+  oidc_provider_arn    = aws_iam_openid_connect_provider.github.arn
+  github_repository    = each.value.repository
+  github_owner_id      = each.value.owner_id
+  github_repository_id = each.value.repository_id
+  bucket_arn           = "arn:${local.partition}:s3:::${each.value.bucket_name}"
+  distribution_arn     = "arn:${local.partition}:cloudfront::${var.aws_account_id}:distribution/${each.value.distribution_id}"
 }
 
 module "log_reader" {

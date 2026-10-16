@@ -56,6 +56,20 @@ run "permissions_are_publish_only" {
   }
 }
 
+run "immutable_subject_with_ids" {
+  command = plan
+
+  variables {
+    github_owner_id      = 1001
+    github_repository_id = 2002
+  }
+
+  assert {
+    condition     = output.token_subject == "repo:example@1001/example.org@2002:ref:refs/heads/main"
+    error_message = "With ids the role matches GitHub's immutable subject (repo:owner@id/name@id)."
+  }
+}
+
 run "bad_repository_is_refused" {
   command = plan
 

@@ -9,6 +9,8 @@ mock_provider "aws" {
 variables {
   oidc_provider_arn    = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
   github_repository    = "example/site-infra"
+  github_owner_id      = 1001
+  github_repository_id = 2002
   state_bucket_name    = "example-tfstate"
   managed_bucket_names = ["example-logs", "example-site"]
   hosted_zone_ids      = ["Z0000000000000000000"]
@@ -20,9 +22,9 @@ run "plan_role_trusts_pull_requests_only" {
   assert {
     condition = jsondecode(aws_iam_role.plan.assume_role_policy).Statement[0].Condition.StringEquals == {
       "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-      "token.actions.githubusercontent.com:sub" = "repo:example/site-infra:pull_request"
+      "token.actions.githubusercontent.com:sub" = "repo:example@1001/site-infra@2002:pull_request"
     }
-    error_message = "The plan role accepts pull request tokens of this repository only."
+    error_message = "The plan role accepts pull request tokens of this repository only, by its immutable subject."
   }
 }
 
@@ -32,10 +34,34 @@ run "apply_role_trusts_the_environment_only" {
   assert {
     condition = jsondecode(aws_iam_role.apply.assume_role_policy).Statement[0].Condition.StringEquals == {
       "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-      "token.actions.githubusercontent.com:sub" = "repo:example/site-infra:environment:production"
+      "token.actions.githubusercontent.com:sub" = "repo:example@1001/site-infra@2002:environment:production"
     }
     error_message = "The apply role accepts tokens of jobs in the production environment only."
   }
+}
+
+run "plain_subject_without_ids" {
+  command = plan
+
+  variables {
+    github_owner_id      = null
+    github_repository_id = null
+  }
+
+  assert {
+    condition     = output.token_subject_prefix == "repo:example/site-infra"
+    error_message = "Without ids the roles match the plain repo:owner/name subject."
+  }
+}
+
+run "ids_come_in_pairs" {
+  command = plan
+
+  variables {
+    github_owner_id = null
+  }
+
+  expect_failures = [var.github_repository_id]
 }
 
 run "plan_role_cannot_write" {

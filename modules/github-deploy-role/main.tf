@@ -5,7 +5,10 @@
 # so pull request runs and other branches cannot assume it.
 
 locals {
-  subject = var.github_environment == null ? "repo:${var.github_repository}:ref:${var.github_ref}" : "repo:${var.github_repository}:environment:${var.github_environment}"
+  repository_parts = split("/", var.github_repository)
+  subject_prefix = (var.github_repository_id == null ? "repo:${var.github_repository}" :
+  "repo:${local.repository_parts[0]}@${var.github_owner_id}/${local.repository_parts[1]}@${var.github_repository_id}")
+  subject = var.github_environment == null ? "${local.subject_prefix}:ref:${var.github_ref}" : "${local.subject_prefix}:environment:${var.github_environment}"
 }
 
 resource "aws_iam_role" "this" {

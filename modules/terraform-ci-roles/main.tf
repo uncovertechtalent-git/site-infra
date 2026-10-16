@@ -19,6 +19,9 @@ data "aws_partition" "current" {}
 locals {
   partition        = data.aws_partition.current.partition
   token            = "token.actions.githubusercontent.com"
+  repository_parts = split("/", var.github_repository)
+  subject_prefix = (var.github_repository_id == null ? "repo:${var.github_repository}" :
+  "repo:${local.repository_parts[0]}@${var.github_owner_id}/${local.repository_parts[1]}@${var.github_repository_id}")
   state_bucket_arn = "arn:${local.partition}:s3:::${var.state_bucket_name}"
   state_prefix     = trim(var.state_key_prefix, "/")
   state_objects    = "${local.state_bucket_arn}/${local.state_prefix}/*"
@@ -219,7 +222,7 @@ resource "aws_iam_role" "plan" {
         Condition = {
           StringEquals = {
             "${local.token}:aud" = "sts.amazonaws.com"
-            "${local.token}:sub" = "repo:${var.github_repository}:pull_request"
+            "${local.token}:sub" = "${local.subject_prefix}:pull_request"
           }
         }
       },
@@ -249,7 +252,7 @@ resource "aws_iam_role" "apply" {
         Condition = {
           StringEquals = {
             "${local.token}:aud" = "sts.amazonaws.com"
-            "${local.token}:sub" = "repo:${var.github_repository}:environment:${var.apply_environment}"
+            "${local.token}:sub" = "${local.subject_prefix}:environment:${var.apply_environment}"
           }
         }
       },
