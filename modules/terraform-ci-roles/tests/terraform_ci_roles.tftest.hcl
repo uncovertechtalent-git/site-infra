@@ -139,3 +139,15 @@ run "apply_role_writes_only_the_managed_buckets_and_zones" {
     error_message = "Certificates only in us-east-1, the region CloudFront reads them from."
   }
 }
+
+run "plan_role_can_find_buckets" {
+  command = plan
+
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_iam_role_policy.plan.policy).Statement :
+      contains(flatten([s.Action]), "s3:ListBucket") && contains(flatten([s.Resource]), "arn:aws:s3:::example-site")
+    ])
+    error_message = "The plan role may list (HeadBucket) the managed buckets; without it a plan re-creates them."
+  }
+}

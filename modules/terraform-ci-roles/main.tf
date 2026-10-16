@@ -44,22 +44,17 @@ locals {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "ListState"
-        Effect    = "Allow"
-        Action    = "s3:ListBucket"
-        Resource  = local.state_bucket_arn
-        Condition = { StringLike = { "s3:prefix" = ["${local.state_prefix}/*"] } }
-      },
-      {
         Sid      = "ReadStateAndVariables"
         Effect   = "Allow"
         Action   = "s3:GetObject"
         Resource = local.state_objects
       },
       {
-        Sid      = "ReadBucketSettings"
+        # s3:ListBucket also covers HeadBucket, which the provider calls to find a
+        # bucket. Without it the plan reads a bucket as gone and plans to re-create it.
+        Sid      = "ReadBuckets"
         Effect   = "Allow"
-        Action   = local.bucket_read_actions
+        Action   = concat(local.bucket_read_actions, ["s3:ListBucket"])
         Resource = concat(local.bucket_arns, [local.state_bucket_arn])
       },
       {

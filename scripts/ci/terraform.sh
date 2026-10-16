@@ -56,8 +56,9 @@ for d in "$root"/live/*/; do
 done
 
 fail() { # stack step log
-  echo "::error::$1: terraform $2 failed; the last lines follow"
-  tail -n 30 "$3"
+  echo "::error::$1: terraform $2 failed; its error follows"
+  # Only the error, never the plan above it.
+  if grep -q '^Error:' "$3"; then sed -n '/^Error:/,$p' "$3" | head -n 40; else tail -n 10 "$3"; fi
   printf '\n**%s: terraform %s failed.** See the job log.\n' "$1" "$2" >> "$summary"
   cat "$summary" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
   exit 1
