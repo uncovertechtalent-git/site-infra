@@ -16,7 +16,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: pip
-    directory: "/.github/zizmor"
+    directory: "/scripts/ci/zizmor"
     schedule:
       interval: monthly
     cooldown:

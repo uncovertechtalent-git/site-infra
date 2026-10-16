@@ -19,6 +19,29 @@ variable "noncurrent_version_days" {
   }
 }
 
+variable "writer_principal_arns" {
+  description = "Principals that may write and delete state objects (the CI apply role). Empty: IAM alone decides."
+  type        = list(string)
+  default     = []
+}
+
+variable "operator_principal_arns" {
+  description = "Break-glass principals: they may write every object, operator_only_keys included."
+  type        = list(string)
+  default     = []
+}
+
+variable "operator_only_keys" {
+  description = "Object key patterns only the operator may write (the bootstrap state, the tfvars)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = length(var.operator_only_keys) == 0 || length(var.operator_principal_arns) > 0
+    error_message = "operator_only_keys needs operator_principal_arns, or nobody could write those keys."
+  }
+}
+
 variable "tags" {
   description = "Tags for the bucket, on top of the provider default tags."
   type        = map(string)

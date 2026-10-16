@@ -83,7 +83,13 @@ jobs:
         run: shellcheck scripts/*.sh scripts/ci/*.sh
 
       - name: Python scripts compile
-        run: python3 -m py_compile scripts/*.py stats/*.py
+        run: python3 -m py_compile scripts/*.py scripts/ci/*.py stats/*.py
+
+      - name: Unit tests of the public-output boundaries (counts-only summary, tfvars masking)
+        run: python3 -m unittest discover -s tests -v
+
+      - name: GitHub-hosted runners only
+        run: scripts/ci/hosted-runners-only.sh
 
   trivy:
     name: trivy config scan
@@ -121,10 +127,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install zizmor (version and wheel hashes pinned in .github/zizmor/requirements.txt)
+      - name: Install zizmor (version and wheel hashes pinned in scripts/ci/zizmor/requirements.txt)
         run: |
           python3 -m venv "$RUNNER_TEMP/zizmor"
-          "$RUNNER_TEMP/zizmor/bin/pip" install --require-hashes --no-deps --only-binary :all: -r .github/zizmor/requirements.txt
+          "$RUNNER_TEMP/zizmor/bin/pip" install --require-hashes --no-deps --only-binary :all: -r scripts/ci/zizmor/requirements.txt
 
       - name: zizmor .github
         env:

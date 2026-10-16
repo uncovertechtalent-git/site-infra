@@ -22,6 +22,8 @@ The repository is public on purpose: every artifact of the work is here to audit
 | `<site>-github-deploy` | the main branch of the site repository | list and write that site's bucket, invalidate that site's distribution |
 | `site-infra-access-logs-<suffix>-reader` | the operator host's stats job | list and read the log bucket |
 
+The state bucket's own policy backs the roles up, whatever IAM allows: only the apply role and the operator write or delete state objects, and only the operator writes the bootstrap state and the tfvars.
+
 All IAM lives in the bootstrap stack. The apply role cannot create, change or attach a role or policy, so nothing that CI runs can widen its own access. `scripts/role-boundaries.sh` checks 16 of these limits with the IAM policy simulator after each bootstrap apply.
 
 ### Configuration that stays private
@@ -42,7 +44,7 @@ The long-lived credentials of the operator host (an IAM user with administrator 
 | What | Pin | Bumped by |
 |---|---|---|
 | `actions/checkout` | full commit SHA | Dependabot, 7-day cooldown |
-| zizmor | version and wheel hashes (`.github/zizmor/requirements.txt`) | Dependabot, 7-day cooldown |
+| zizmor | version and wheel hashes (`scripts/ci/zizmor/requirements.txt`) | Dependabot, 7-day cooldown |
 | AWS provider | exact version in each stack, hashes in `.terraform.lock.hcl` | Dependabot, 7-day cooldown |
 | terraform, tflint, trivy | version and sha256 in `scripts/ci/install-tools.sh` | by hand, 14 days after a release |
 | tflint AWS ruleset | version in `.tflint.hcl`, signature checked by `tflint --init` | by hand |
