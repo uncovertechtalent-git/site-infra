@@ -1,0 +1,111 @@
+name: Terraform
+
+# Plan on pull requests, apply on main after approval. No AWS secret exists:
+# each job exchanges its GitHub OIDC token for a one-hour role session
+# (scripts/ci/terraform.sh). The roles live in the bootstrap stack:
+#
+#   plan   trusts pull request tokens of this repository; read-only.
+#          Fork pull requests get no OIDC token, and this workflow never uses
+#          pull_request_target, so code from a fork never meets AWS.
+#   apply  trusts tokens of jobs in the "production" environment only. The
+#          environment allows main and needs the owner's approval.
+#
+# Role ARNs and the state bucket are GitHub secrets: none is a credential,
+# but the account id is in them, and only secrets are masked in a step's env
+# header (variables would print in clear before any script could mask them).
+# Repository secrets: TF_STATE_BUCKET, AWS_PLAN_ROLE_ARN. Environment secret
+# of production: AWS_APPLY_ROLE_ARN. Plan output stays in files on the runner; the log, the
+# job summary and the pull request comment show counts only.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "live/**"
+      - "modules/**"
+      - "scripts/ci/terraform.sh"
+      - "scripts/plan_summary.py"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "live/**"
+      - "modules/**"
+      - "scripts/ci/terraform.sh"
+      - "scripts/plan_summary.py"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  plan:
+    name: Plan (read-only role)
+    # Same-repository pull requests only; Dependabot runs get no OIDC token.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: terraform-plan-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      id-token: write       # the OIDC token the plan role trusts
+      pull-requests: write  # the counts-only plan comment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install terraform (pinned, sha256 checked)
+        run: scripts/ci/install-tools.sh terraform
+
+      - name: Plan every stack
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          AWS_REGION: eu-central-1
+        run: scripts/ci/terraform.sh plan
+
+      - name: Comment the counts on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "<!-- site-infra:plan -->"
+            echo "### Terraform plan, counts only"
+            echo
+            cat "$RUNNER_TEMP/terraform/summary.md"
+          } > "$RUNNER_TEMP/terraform/comment.md"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none \
+            --body-file "$RUNNER_TEMP/terraform/comment.md"
+
+  apply:
+    name: Apply (production environment)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: production
+    concurrency:
+      group: terraform-apply
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write  # the OIDC token the apply role trusts (environment claim)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install terraform (pinned, sha256 checked)
+        run: scripts/ci/install-tools.sh terraform
+
+      - name: Plan and apply shared and site stacks
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          AWS_REGION: eu-central-1
+        run: scripts/ci/terraform.sh apply

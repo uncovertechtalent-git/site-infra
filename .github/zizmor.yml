@@ -1,0 +1,4 @@
+# zizmor configuration: https://docs.zizmor.sh/configuration/
+# Accepted findings get an inline `# zizmor: ignore[<rule>]` comment on their line
+# and an entry here with the reason. None so far.
+rules: {}
