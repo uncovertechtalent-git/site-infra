@@ -56,3 +56,41 @@ run "short_revision_history_is_refused" {
 
   expect_failures = [var.noncurrent_version_days]
 }
+
+run "only_named_principals_write_state" {
+  command = apply
+
+  variables {
+    writer_principal_arns   = ["arn:aws:iam::123456789012:role/apply"]
+    operator_principal_arns = ["arn:aws:iam::123456789012:user/operator"]
+    operator_only_keys      = ["site-infra/bootstrap.tfstate*", "site-infra/tfvars/*"]
+  }
+
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_s3_bucket_policy.this.policy).Statement :
+      s.Sid == "OnlyNamedWriters" && s.Effect == "Deny"
+      && toset(s.Condition.ArnNotEquals["aws:PrincipalArn"]) == toset(["arn:aws:iam::123456789012:role/apply", "arn:aws:iam::123456789012:user/operator"])
+    ])
+    error_message = "Writes by anyone but the apply role and the operator are denied."
+  }
+
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_s3_bucket_policy.this.policy).Statement :
+      s.Sid == "OperatorOnlyKeys" && s.Condition.ArnNotEquals["aws:PrincipalArn"] == ["arn:aws:iam::123456789012:user/operator"]
+      && toset(s.Resource) == toset(["arn:aws:s3:::example-tfstate/site-infra/bootstrap.tfstate*", "arn:aws:s3:::example-tfstate/site-infra/tfvars/*"])
+    ])
+    error_message = "The bootstrap state and the tfvars are the operator's alone."
+  }
+}
+
+run "operator_only_keys_need_an_operator" {
+  command = plan
+
+  variables {
+    operator_only_keys = ["site-infra/tfvars/*"]
+  }
+
+  expect_failures = [var.operator_only_keys]
+}

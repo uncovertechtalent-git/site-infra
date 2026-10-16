@@ -19,6 +19,16 @@ variable "state_bucket_name" {
   type        = string
 }
 
+variable "operator_principal_arns" {
+  description = "Break-glass principals (the operator host's IAM user). Only they write the bootstrap state and the tfvars. Set in local tfvars."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.operator_principal_arns) > 0
+    error_message = "Name the operator, or nobody could write the bootstrap state."
+  }
+}
+
 variable "github_repository" {
   description = "Repository whose Terraform workflow assumes the plan and apply roles."
   type        = string

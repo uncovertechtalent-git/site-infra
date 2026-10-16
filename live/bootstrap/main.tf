@@ -20,7 +20,10 @@ locals {
 module "state_bucket" {
   source = "../../modules/state-bucket"
 
-  bucket_name = var.state_bucket_name
+  bucket_name             = var.state_bucket_name
+  writer_principal_arns   = [module.terraform_ci_roles.apply_role_arn]
+  operator_principal_arns = var.operator_principal_arns
+  operator_only_keys      = ["site-infra/bootstrap.tfstate*", "site-infra/tfvars/*"]
 }
 
 resource "aws_iam_openid_connect_provider" "github" {

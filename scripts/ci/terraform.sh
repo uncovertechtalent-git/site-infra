@@ -8,8 +8,9 @@
 #
 # The job's OIDC token is exchanged for a one-hour session of the role in
 # AWS_ROLE_ARN. Each stack's tfvars come from the state bucket, where the
-# operator puts them (scripts/tf.sh <stack> push-vars); their private values,
-# the account id and the role ARN are masked before anything runs.
+# operator puts them (scripts/tf.sh <stack> push-vars); their private values
+# (scripts/ci/tfvars_mask.py), the account id and the role ARN are masked
+# before anything runs.
 # Plan and apply output goes to files in RUNNER_TEMP, never to the public
 # log: the log and the job summary show counts per resource type
 # (scripts/plan_summary.py), and on a failure the last lines of the error.
@@ -71,9 +72,8 @@ for stack in "${stacks[@]}"; do
   fi
   vars="$work/$stack.tfvars"
   aws s3 cp --only-show-errors "s3://$TF_STATE_BUCKET/site-infra/tfvars/$stack.tfvars" "$vars"
-  # Private values carry a digit (account id, zone id, bucket suffix, ARN) or are
-  # long upper-case ids; public ones (host names, repository names) stay readable.
-  grep -oE '"[^"]{4,}"' "$vars" | tr -d '"' | grep -E '[0-9]|^[A-Z]{10,}$' | sort -u | sed 's/^/::add-mask::/' || true
+  # Every quoted value is private unless its key is on the public list (tfvars_mask.py).
+  python3 "$root/scripts/ci/tfvars_mask.py" "$vars"
 
   tf=(terraform -chdir="$root/live/$stack")
   "${tf[@]}" init -input=false -no-color -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" \

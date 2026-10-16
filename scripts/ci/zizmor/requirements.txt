@@ -1,4 +1,4 @@
-# zizmor for the "Workflow security (zizmor)" job in conformity.yml. pip installs it with --require-hashes,
+# zizmor for the "Workflow security (zizmor)" job in ci.yml. pip installs it with --require-hashes,
 # so a changed wheel on PyPI fails the install. Dependabot moves the version and the hashes together.
 zizmor==1.30.1 \
     --hash=sha256:17fda74e15fe41a6aa354ea4cf71fc7ff3cd025cda6584bb6d7466b3f1d00fe6 \
