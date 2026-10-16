@@ -49,10 +49,14 @@ export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 unset creds token
 echo "::add-mask::$(aws sts get-caller-identity --query Account --output text)"
 
-# bootstrap first, shared second, then the sites.
+# bootstrap first, shared second, then the sites. Stacks of another provider
+# whose token CI does not hold (cloudflare-access) are the operator's alone:
+# CI validates and tests them (ci.yml) and never plans them.
+operator_only=" cloudflare-access "
 stacks=(bootstrap shared)
 for d in "$root"/live/*/; do
   s="$(basename "$d")"
+  case "$operator_only" in *" $s "*) continue ;; esac
   [ "$s" = bootstrap ] || [ "$s" = shared ] || stacks+=("$s")
 done
 
@@ -95,7 +99,7 @@ for stack in "${stacks[@]}"; do
 done
 
 if [ "$mode" = plan ]; then
-  printf '%s\n' "The bootstrap stack holds IAM and the state bucket; the operator applies it (README, \"Break-glass\"). Merging applies the other stacks after approval in the production environment." >> "$summary"
+  printf '%s\n' "The bootstrap stack holds IAM and the state bucket; the operator applies it (README, \"Break-glass\"). The cloudflare-access stack is the operator's too and is not planned here. Merging applies the other stacks after approval in the production environment." >> "$summary"
 fi
 cat "$summary"
 cat "$summary" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"

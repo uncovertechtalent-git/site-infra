@@ -61,11 +61,13 @@ modules/
                        function, security headers, standard logging v2, Route 53 records
   github-deploy-role/  OIDC role for one repository's deploy job
   terraform-ci-roles/  OIDC plan role (pull requests) and apply role (production environment)
+  cloudflare-access-app/  Cloudflare Access application, Allow policy by email, one-time PIN login
   log-reader-role/     read-only role of the stats job
 live/
   bootstrap/           state bucket, OIDC provider, every IAM role (operator only)
   shared/              log bucket
   machinebehavior.io/  the site, with the cutover switches
+  cloudflare-access/   Access in front of the tunnel hostnames (operator only)
 scripts/
   tf.sh                plan and apply on the operator host (bootstrap, break-glass)
   role-boundaries.sh   IAM policy simulator checks of the roles
@@ -133,6 +135,12 @@ mkdir -p ~/.config/systemd/user
 ln -sf ~/code/site-infra/stats/site-traffic.service ~/code/site-infra/stats/site-traffic.timer ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now site-traffic.timer
 ```
+
+## Cloudflare Access in front of the tunnel
+
+A Cloudflare tunnel publishes services of the operator host under their own hostnames. Without Access, each of them is public the moment it starts. `live/cloudflare-access` puts one Access application in front of all of them: an Allow policy with one include rule per allowed email, and the one-time PIN login (Cloudflare mails a code to an allowed address; any other address gets no code). Hostnames, account id and emails are in the stack's local tfvars, so this repository does not list the services.
+
+The stack is the operator's, like bootstrap. CI validates it and runs the module tests with a mocked provider, but holds no Cloudflare token, so it never plans or applies it. The operator runs `scripts/tf.sh cloudflare-access plan|apply` with the token in `CLOUDFLARE_API_TOKEN` for that one process. The token is an account API token for this one account with three permissions, each the narrowest group for the resources the stack manages: "Access: Apps and Policies Write" (application and policy), "Access: Identity Providers Write" (the one-time PIN), "Access: Organizations Write" (the team domain, only while `manage_organization` is true). No zone, DNS or tunnel permission: the stack touches none of them.
 
 ## Accepted findings
 
