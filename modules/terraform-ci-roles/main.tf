@@ -148,6 +148,9 @@ locals {
           "cloudfront:CreateResponseHeadersPolicy",
           "cloudfront:UpdateResponseHeadersPolicy",
           "cloudfront:DeleteResponseHeadersPolicy",
+          "cloudfront:CreateOriginRequestPolicy",
+          "cloudfront:UpdateOriginRequestPolicy",
+          "cloudfront:DeleteOriginRequestPolicy",
           "cloudfront:TagResource",
           "cloudfront:UntagResource",
           "cloudfront:AllowVendedLogsDeliveryForResource",
@@ -210,7 +213,8 @@ locals {
   # only for the Lambda service.
   function_arns  = flatten([for f in var.functions : [f.function_arn, "${f.function_arn}:*"]])
   log_group_arns = flatten([for f in var.functions : [f.log_group_arn, "${f.log_group_arn}:*"]])
-  web_acl_arns   = [for f in var.functions : f.web_acl_arn]
+  # CreateWebACL is checked before the ACL has an id; the other actions name the id.
+  web_acl_arns = flatten([for f in var.functions : [f.web_acl_arn, "${f.web_acl_arn}/*"]])
 
   # One element per statement when var.functions is not empty, none when it is
   # (a conditional cannot return tuples of different lengths).
@@ -224,9 +228,11 @@ locals {
       Resource = local.function_arns
     },
     {
-      Sid      = "ReadWebAclsAndLogGroups"
-      Effect   = "Allow"
-      Action   = ["wafv2:Get*", "wafv2:List*", "logs:DescribeLogGroups", "logs:ListTagsLogGroup"]
+      Sid    = "ReadWebAclsAndLogGroups"
+      Effect = "Allow"
+      # Not wafv2:Get*: it would also read the addresses a rate rule is blocking
+      # (GetRateBasedStatementManagedKeys) and sampled requests, for every web ACL.
+      Action   = ["wafv2:GetWebACL", "wafv2:ListWebACLs", "wafv2:ListTagsForResource", "logs:DescribeLogGroups", "logs:ListTagsLogGroup"]
       Resource = "*"
     },
   ]])

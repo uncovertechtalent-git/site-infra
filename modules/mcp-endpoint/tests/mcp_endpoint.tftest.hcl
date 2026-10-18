@@ -66,8 +66,23 @@ run "defaults_hold_the_limits" {
   }
 
   assert {
-    condition     = aws_lambda_function_url.this.authorization_type == "NONE" && aws_lambda_permission.url.function_url_auth_type == "NONE" && aws_lambda_permission.invoke.invoked_via_function_url
-    error_message = "the function URL is public and has both invoke statements"
+    condition     = aws_lambda_function_url.this.authorization_type == "NONE"
+    error_message = "the function URL is public (the provider adds its two invoke statements)"
+  }
+
+  assert {
+    condition = (
+      one(aws_cloudfront_origin_request_policy.this.headers_config).header_behavior == "whitelist" &&
+      toset(one(one(aws_cloudfront_origin_request_policy.this.headers_config).headers).items) == toset(["Accept", "Content-Type", "MCP-Protocol-Version", "Origin"]) &&
+      one(aws_cloudfront_origin_request_policy.this.cookies_config).cookie_behavior == "none" &&
+      one(aws_cloudfront_origin_request_policy.this.query_strings_config).query_string_behavior == "none"
+    )
+    error_message = "only the four headers the server reads reach it: no cookies, no query strings, no viewer location headers"
+  }
+
+  assert {
+    condition     = !aws_cloudfront_distribution.this.is_ipv6_enabled
+    error_message = "IPv4 only, so the per-IP rate limit counts hosts"
   }
 
   assert {
@@ -142,8 +157,8 @@ run "attach_dns_adds_the_alias_records" {
   }
 
   assert {
-    condition     = length(aws_route53_record.host) == 2
-    error_message = "A and AAAA alias records"
+    condition     = keys(aws_route53_record.host) == ["A"]
+    error_message = "one A alias record (IPv4 only)"
   }
 }
 
@@ -165,6 +180,26 @@ run "a_short_origin_secret_is_refused" {
   }
 
   expect_failures = [var.origin_secret]
+}
+
+run "a_short_previous_secret_is_refused" {
+  command = plan
+
+  variables {
+    origin_secret_previous = "short"
+  }
+
+  expect_failures = [var.origin_secret_previous]
+}
+
+run "an_asn_log_field_is_refused" {
+  command = plan
+
+  variables {
+    log_record_fields = ["date", "asn"]
+  }
+
+  expect_failures = [var.log_record_fields]
 }
 
 run "concurrency_must_be_capped" {

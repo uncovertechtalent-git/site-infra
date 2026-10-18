@@ -3,11 +3,35 @@
 # header, security headers, and a WAF web ACL with a rate limit per IP.
 
 locals {
-  # Managed policies, ids fixed by AWS.
-  cache_policy_caching_disabled             = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-  origin_request_policy_all_viewer_but_host = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+  # Managed policy, id fixed by AWS.
+  cache_policy_caching_disabled = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
 
   function_url_host = trimsuffix(trimprefix(aws_lambda_function_url.this.function_url, "https://"), "/")
+}
+
+# Only the headers the server reads reach the function. The managed "all viewer"
+# policy would also forward cookies, query strings and the CloudFront-Viewer-*
+# headers (address, city, postal code, coordinates, ASN), none of which it needs.
+# CloudFront adds X-Forwarded-For in any case; the function never reads or logs it.
+resource "aws_cloudfront_origin_request_policy" "this" {
+  name    = "${var.name}-origin"
+  comment = "Headers the ${var.host} MCP server reads, nothing else"
+
+  headers_config {
+    header_behavior = "whitelist"
+
+    headers {
+      items = ["Accept", "Content-Type", "MCP-Protocol-Version", "Origin"]
+    }
+  }
+
+  cookies_config {
+    cookie_behavior = "none"
+  }
+
+  query_strings_config {
+    query_string_behavior = "none"
+  }
 }
 
 resource "aws_acm_certificate" "this" {
@@ -128,11 +152,13 @@ resource "aws_cloudfront_response_headers_policy" "this" {
 }
 
 resource "aws_cloudfront_distribution" "this" {
-  enabled         = true
-  comment         = var.host
-  aliases         = [var.host]
-  http_version    = "http2and3"
-  is_ipv6_enabled = true
+  enabled      = true
+  comment      = var.host
+  aliases      = [var.host]
+  http_version = "http2and3"
+  # IPv4 only: the WAF rate rule counts single addresses and cannot group an IPv6
+  # /64, so one host could rotate addresses under it and use up the concurrency.
+  is_ipv6_enabled = false
   price_class     = var.price_class
   web_acl_id      = aws_wafv2_web_acl.this.arn
 
@@ -161,7 +187,7 @@ resource "aws_cloudfront_distribution" "this" {
     cached_methods             = ["GET", "HEAD"]
     compress                   = true
     cache_policy_id            = local.cache_policy_caching_disabled
-    origin_request_policy_id   = local.origin_request_policy_all_viewer_but_host
+    origin_request_policy_id   = aws_cloudfront_origin_request_policy.this.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.this.id
   }
 

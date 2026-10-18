@@ -23,11 +23,13 @@ fn="ask-mbio"
 fnrole="ask-mbio-lambda"
 lambda="arn:aws:lambda:eu-central-1:$account:function"
 loggroup="arn:aws:logs:eu-central-1:$account:log-group:/aws/lambda"
+webacl="arn:aws:wafv2:us-east-1:$account:global/webacl"
+acl_id="00000000-0000-0000-0000-000000000000"
 failed=0
 
-expect() { # want role action resource label [service the role is passed to]
+expect() { # want role action resource label [context key=value, for example iam:PassedToService=lambda.amazonaws.com]
   ctx=()
-  [ -n "${6:-}" ] && ctx=(--context-entries "ContextKeyName=iam:PassedToService,ContextKeyValues=$6,ContextKeyType=string")
+  [ -n "${6:-}" ] && ctx=(--context-entries "ContextKeyName=${6%%=*},ContextKeyValues=${6#*=},ContextKeyType=string")
   got=$(aws iam simulate-principal-policy --policy-source-arn "arn:aws:iam::$account:role/$2" \
     --action-names "$3" --resource-arns "$4" ${ctx[@]+"${ctx[@]}"} --query "EvaluationResults[0].EvalDecision" --output text)
   case "$got" in allowed) got=allow ;; *) got=deny ;; esac
@@ -54,9 +56,17 @@ expect deny  "$deploy" s3:PutObject                     "arn:aws:s3:::$logs/x"  
 expect deny  "$deploy" s3:PutBucketPolicy               "arn:aws:s3:::$site"                                "deploy changes no bucket setting"
 expect allow "$apply"  lambda:UpdateFunctionCode        "$lambda:$fn"                                       "apply deploys the MCP function"
 expect deny  "$apply"  lambda:UpdateFunctionCode        "$lambda:other"                                     "apply leaves other functions alone"
-expect allow "$apply"  iam:PassRole                     "arn:aws:iam::$account:role/$fnrole"                "apply passes the function role to Lambda" lambda.amazonaws.com
-expect deny  "$apply"  iam:PassRole                     "arn:aws:iam::$account:role/$fnrole"                "apply passes it to no other service" ec2.amazonaws.com
-expect deny  "$apply"  iam:PassRole                     "arn:aws:iam::$account:role/$apply"                 "apply passes no other role" lambda.amazonaws.com
+expect deny  "$apply"  lambda:AddPermission             "$lambda:other"                                     "apply opens no other function"
+expect allow "$apply"  iam:PassRole                     "arn:aws:iam::$account:role/$fnrole"                "apply passes the function role to Lambda" iam:PassedToService=lambda.amazonaws.com
+expect deny  "$apply"  iam:PassRole                     "arn:aws:iam::$account:role/$fnrole"                "apply passes it to no other service" iam:PassedToService=ec2.amazonaws.com
+expect deny  "$apply"  iam:PassRole                     "arn:aws:iam::$account:role/$apply"                 "apply passes no other role" iam:PassedToService=lambda.amazonaws.com
+expect allow "$apply"  logs:CreateLogGroup              "$loggroup/$fn"                                     "apply creates the function's log group"
+expect deny  "$apply"  logs:DeleteLogGroup              "$loggroup/other"                                   "apply deletes no other log group"
+expect allow "$apply"  wafv2:CreateWebACL               "$webacl/$fn"                                       "apply creates the function's web ACL" aws:RequestedRegion=us-east-1
+expect allow "$apply"  wafv2:UpdateWebACL               "$webacl/$fn/$acl_id"                               "apply updates the function's web ACL" aws:RequestedRegion=us-east-1
+expect deny  "$apply"  wafv2:UpdateWebACL               "$webacl/other/$acl_id"                             "apply leaves other web ACLs alone" aws:RequestedRegion=us-east-1
+expect deny  "$plan"   lambda:UpdateFunctionCode        "$lambda:$fn"                                       "plan deploys no function"
+expect deny  "$plan"   wafv2:GetRateBasedStatementManagedKeys "$webacl/$fn/$acl_id"                         "plan never reads the addresses a rate rule blocks" aws:RequestedRegion=us-east-1
 expect deny  "$apply"  iam:PutRolePolicy                "arn:aws:iam::$account:role/$fnrole"                "apply cannot widen the function role"
 expect allow "$fnrole" logs:PutLogEvents                "$loggroup/$fn:log-stream:x"                        "the function writes its own logs"
 expect deny  "$fnrole" logs:PutLogEvents                "$loggroup/other:log-stream:x"                      "the function writes no other log group"

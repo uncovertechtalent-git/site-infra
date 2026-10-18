@@ -61,6 +61,11 @@ variable "origin_secret_previous" {
   type        = string
   default     = ""
   sensitive   = true
+
+  validation {
+    condition     = var.origin_secret_previous == "" || (length(var.origin_secret_previous) >= 32 && can(regex("^[A-Za-z0-9_-]+$", var.origin_secret_previous)))
+    error_message = "origin_secret_previous must be empty or follow the same rule as origin_secret."
+  }
 }
 
 variable "memory_mb" {
@@ -70,9 +75,9 @@ variable "memory_mb" {
 }
 
 variable "timeout_seconds" {
-  description = "Function timeout."
+  description = "Function timeout: two cold reads of the site (8 s each at most) fit, under CloudFront's 30 s origin read timeout."
   type        = number
-  default     = 15
+  default     = 25
 }
 
 variable "reserved_concurrency" {
@@ -126,11 +131,13 @@ variable "log_record_fields" {
     "cs-protocol-version",
   ]
 
+  # An allowlist: a field that is not here (address, port, User-Agent, referrer,
+  # country, ASN, cookie, query string, request id) cannot be added by mistake.
   validation {
     condition = alltrue([
-      for f in var.log_record_fields : !contains(["c-ip", "x-forwarded-for", "c-port", "cs(Cookie)", "cs-uri-query", "cs(User-Agent)", "cs(Referer)", "c-country", "x-edge-request-id"], f)
+      for f in var.log_record_fields : contains(["date", "time", "x-edge-location", "cs-method", "cs-uri-stem", "sc-status", "sc-bytes", "cs-bytes", "time-taken", "time-to-first-byte", "x-edge-result-type", "x-edge-response-result-type", "x-edge-detailed-result-type", "cs-protocol", "cs-protocol-version", "x-host-header", "sc-content-type", "sc-content-len", "ssl-protocol"], f)
     ])
-    error_message = "log_record_fields must not record c-ip, x-forwarded-for, c-port, cs(Cookie), cs-uri-query, cs(User-Agent), cs(Referer), c-country or x-edge-request-id."
+    error_message = "log_record_fields may only hold counts and timings: date, time, x-edge-location, cs-method, cs-uri-stem, sc-status, sc-bytes, cs-bytes, time-taken, time-to-first-byte, the x-edge result types, cs-protocol, cs-protocol-version, x-host-header, sc-content-type, sc-content-len, ssl-protocol."
   }
 }
 

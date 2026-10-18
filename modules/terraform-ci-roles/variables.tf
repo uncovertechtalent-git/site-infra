@@ -70,7 +70,7 @@ variable "hosted_zone_ids" {
 }
 
 variable "functions" {
-  description = "Lambda functions behind CloudFront that the apply role manages: each function's ARN, its execution role (bootstrap), its log group ARN without :*, and its CLOUDFRONT web ACL ARN pattern (us-east-1, global/webacl/<name>/*)."
+  description = "Lambda functions behind CloudFront that the apply role manages: each function's ARN, its execution role (bootstrap), its log group ARN without :*, and its CLOUDFRONT web ACL ARN up to the name (us-east-1, global/webacl/<name>; the role gets it with and without /<id>)."
   type = list(object({
     function_arn  = string
     role_arn      = string
@@ -84,9 +84,9 @@ variable "functions" {
       can(regex("^arn:[a-z-]+:lambda:[a-z0-9-]+:[0-9]{12}:function:[A-Za-z0-9_-]+$", f.function_arn)) &&
       can(regex("^arn:[a-z-]+:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@-]+$", f.role_arn)) &&
       can(regex("^arn:[a-z-]+:logs:[a-z0-9-]+:[0-9]{12}:log-group:/aws/lambda/[A-Za-z0-9_-]+$", f.log_group_arn)) &&
-      can(regex("^arn:[a-z-]+:wafv2:us-east-1:[0-9]{12}:global/webacl/[A-Za-z0-9_-]+/\\*$", f.web_acl_arn))
+      can(regex("^arn:[a-z-]+:wafv2:us-east-1:[0-9]{12}:global/webacl/[A-Za-z0-9_-]+$", f.web_acl_arn))
     ])
-    error_message = "Each function needs exact ARNs: no wildcard in the function, role or log group, and a web ACL pattern global/webacl/<name>/* in us-east-1."
+    error_message = "Each function needs exact ARNs: no wildcard in the function, role, log group or web ACL (global/webacl/<name> in us-east-1)."
   }
 }
 

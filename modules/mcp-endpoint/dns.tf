@@ -1,9 +1,9 @@
-# The public name. Off until attach_dns = true: the last step of the launch,
+# The public name (an A alias; the distribution is IPv4 only). Off until attach_dns = true: the last step of the launch,
 # after the site's privacy notice covers the server. Until then the endpoint
 # answers on the distribution's own domain (dxxxx.cloudfront.net) only.
 
 resource "aws_route53_record" "host" {
-  for_each = var.attach_dns ? toset(["A", "AAAA"]) : toset([])
+  for_each = var.attach_dns ? toset(["A"]) : toset([]) # IPv4 only (cdn.tf)
 
   zone_id = var.zone_id
   name    = var.host

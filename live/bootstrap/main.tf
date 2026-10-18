@@ -56,7 +56,7 @@ module "terraform_ci_roles" {
     function_arn  = "arn:${local.partition}:lambda:${f.region}:${var.aws_account_id}:function:${name}"
     role_arn      = module.function_role[name].role_arn
     log_group_arn = local.function_log_groups[name]
-    web_acl_arn   = "arn:${local.partition}:wafv2:us-east-1:${var.aws_account_id}:global/webacl/${name}/*"
+    web_acl_arn   = "arn:${local.partition}:wafv2:us-east-1:${var.aws_account_id}:global/webacl/${name}"
   }]
 }
 
@@ -64,10 +64,9 @@ module "function_role" {
   source   = "../../modules/lambda-role"
   for_each = local.functions
 
-  role_name      = "${each.key}-lambda"
-  function_name  = each.key
-  aws_account_id = var.aws_account_id
-  log_group_arn  = local.function_log_groups[each.key]
+  role_name     = "${each.key}-lambda"
+  function_name = each.key
+  log_group_arn = local.function_log_groups[each.key]
 }
 
 module "deploy_role" {

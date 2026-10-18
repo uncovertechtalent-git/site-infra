@@ -1,7 +1,8 @@
 # Execution role of one Lambda function: write its own log group, nothing
 # else. The function reads only public HTTPS files, so it needs no AWS
-# permission beyond its logs. The trust allows the Lambda service of this
-# account only.
+# permission beyond its logs. The trust names the Lambda service; only a
+# principal of this account with iam:PassRole on this role (the CI apply role,
+# for Lambda only, and the operator) can attach it to a function.
 
 resource "aws_iam_role" "this" {
   name                 = var.role_name
@@ -14,7 +15,6 @@ resource "aws_iam_role" "this" {
         Effect    = "Allow"
         Principal = { Service = "lambda.amazonaws.com" }
         Action    = "sts:AssumeRole"
-        Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
       },
     ]
   })

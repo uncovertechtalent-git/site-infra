@@ -8,11 +8,6 @@ variable "function_name" {
   type        = string
 }
 
-variable "aws_account_id" {
-  description = "Account whose Lambda service may assume the role."
-  type        = string
-}
-
 variable "log_group_arn" {
   description = "ARN of the function's log group, without the trailing :*."
   type        = string

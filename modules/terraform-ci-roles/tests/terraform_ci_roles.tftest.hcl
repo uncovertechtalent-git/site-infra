@@ -160,8 +160,24 @@ run "functions_add_one_pass_role_to_lambda_and_no_other_iam" {
       function_arn  = "arn:aws:lambda:eu-central-1:123456789012:function:ask-example"
       role_arn      = "arn:aws:iam::123456789012:role/ask-example-lambda"
       log_group_arn = "arn:aws:logs:eu-central-1:123456789012:log-group:/aws/lambda/ask-example"
-      web_acl_arn   = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/ask-example/*"
+      web_acl_arn   = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/ask-example"
     }]
+  }
+
+  assert {
+    condition = one([for s in jsondecode(aws_iam_role_policy.apply.policy).Statement : s.Resource if s.Sid == "FunctionWebAcls"]) == [
+      "arn:aws:wafv2:us-east-1:123456789012:global/webacl/ask-example",
+      "arn:aws:wafv2:us-east-1:123456789012:global/webacl/ask-example/*",
+    ]
+    error_message = "Web ACL actions on the listed ACL only, before and after it has an id."
+  }
+
+  assert {
+    condition = length([
+      for a in flatten([for s in jsondecode(aws_iam_role_policy.plan.policy).Statement : s.Action]) : a
+      if startswith(a, "wafv2:") && !contains(["wafv2:GetWebACL", "wafv2:ListWebACLs", "wafv2:ListTagsForResource"], a)
+    ]) == 0
+    error_message = "The plan role reads web ACLs, never the addresses a rate rule blocks or sampled requests."
   }
 
   assert {

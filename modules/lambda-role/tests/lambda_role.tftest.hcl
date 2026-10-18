@@ -3,7 +3,6 @@ mock_provider "aws" {}
 variables {
   role_name      = "ask-example-lambda"
   function_name  = "ask-example"
-  aws_account_id = "123456789012"
   log_group_arn  = "arn:aws:logs:eu-central-1:123456789012:log-group:/aws/lambda/ask-example"
 }
 
@@ -21,8 +20,8 @@ run "writes_its_own_log_group_only" {
   }
 
   assert {
-    condition     = jsondecode(aws_iam_role.this.assume_role_policy).Statement[0].Principal == { Service = "lambda.amazonaws.com" } && jsondecode(aws_iam_role.this.assume_role_policy).Statement[0].Condition == { StringEquals = { "aws:SourceAccount" = "123456789012" } }
-    error_message = "Only this account's Lambda service may assume the role."
+    condition     = jsondecode(aws_iam_role.this.assume_role_policy).Statement == [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
+    error_message = "Only the Lambda service may assume the role."
   }
 }
 

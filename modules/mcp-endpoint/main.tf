@@ -53,25 +53,12 @@ resource "aws_lambda_function" "this" {
   tags = var.tags
 }
 
+# With auth NONE the provider adds the two resource-policy statements a public
+# function URL needs (FunctionURLAllowPublicAccess for lambda:InvokeFunctionUrl,
+# FunctionURLAllowInvokeAction for lambda:InvokeFunction via the URL; both
+# strings are in provider 6.68.0), so this module declares no permission of its own.
 resource "aws_lambda_function_url" "this" {
   function_name      = aws_lambda_function.this.function_name
   authorization_type = "NONE"
   invoke_mode        = "BUFFERED"
-}
-
-# A function URL with auth NONE needs both statements (Lambda, since October 2025).
-resource "aws_lambda_permission" "url" {
-  statement_id           = "FunctionUrlAllowPublicAccess"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.this.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
-
-resource "aws_lambda_permission" "invoke" {
-  statement_id             = "FunctionUrlAllowInvoke"
-  action                   = "lambda:InvokeFunction"
-  function_name            = aws_lambda_function.this.function_name
-  principal                = "*"
-  invoked_via_function_url = true
 }
