@@ -8,7 +8,7 @@ A user's own model (Claude, ChatGPT, Cursor, any MCP client) calls four tools:
   company(topic, filter)   the company behind the site, from the public Inside snapshots: on call, deploys,
                            incidents, seats, work, decisions, services; every answer says when its snapshot was taken
 
-The server holds no data of its own. It reads three kinds of files the site already publishes, over HTTPS from the
+The server holds no data of its own. It reads four kinds of files the site already publishes, over HTTPS from the
 public site: /llms-passages.json (the passage index, built with the site by scripts/build_llms_full.py in the site
 repository), /map/graph.json (the map), <page>/index.html.md (the twins), and the Inside snapshots under /inside/
 (INSIDE below). So it can expose nothing the site does not.
@@ -563,8 +563,8 @@ def new_tag(kind):
 
 
 def quote_block(text):
-    """Quoted page text for inside the response's tags. After clean() (NFKC, invisible characters gone), any tag of the
-    passage or page kind in the text is escaped as well."""
+    """Quoted text for inside the response's tags. After clean() (NFC, invisible characters gone), lookalike forms of <
+    and any passage, page or inside tag in the text are escaped as well."""
     text = LT_LOOKALIKE.sub('&lt;', clean(text))
     return re.sub(r'(?i)<(\s*/?\s*)(passage|page|inside)', r'&lt;\1\2', text)
 
@@ -709,7 +709,8 @@ def _on_call(d, flt, site):
     pages = sorted(_list(d, 'pages'), key=lambda x: str(x.get('fired', '')), reverse=True)[:10]
     lines += ['', f'Recent pages ({len(pages)} newest):'] + [
         f'- {_s(x, "alert", 80)} at {_s(x, "fired", 30)}{" (drill)" if x.get("drill") else ""}: acknowledged by '
-        f'{_s(x, "acknowledged_by", 60) or "nobody"}, resolved by {_s(x, "resolved_by", 60) or "not yet"} '
+        f'{plain(str(x.get("acknowledged_by") or ""), 60) or "nobody"}, resolved by '
+        f'{plain(str(x.get("resolved_by") or ""), 60) or "not yet"} '
         f'after {_s(x, "time_to_resolve_s", 10) or "?"} s{", out of hours" if x.get("out_of_hours") else ""}' for x in pages]
     weeks = _list(d, 'weeks')[-4:]
     lines += ['', 'Pages per week (last 4):'] + [
@@ -726,7 +727,8 @@ def _deploys(d, flt, site):
         lines += ['', f'{one_line(str(repo), 100)}, latest workflow runs:']
         for x in [r for r in runs if isinstance(r, dict)][:8]:
             state = _s(x, 'conclusion', 20) or _s(x, 'status', 20)
-            lines.append(f'- {_s(x, "name", 60)} #{_s(x, "run_number", 8)}: {state} ({_s(x, "event", 30)}), started '
+            # A fork pull request can add a workflow with any name, so the run name is third-party text too.
+            lines.append(f'- {plain(str(x.get("name") or ""), 60)} #{_s(x, "run_number", 8)}: {state} ({_s(x, "event", 30)}), started '
                          f'{_s(x, "run_started_at", 30)}: {plain(str(x.get("display_title") or ""), 160)} {_s(x, "html_url", 300)}')
     return lines or ['No workflow runs match.']
 
@@ -932,7 +934,7 @@ def http_response(status, body=None, extra=None, content_type='application/json'
 
 LANDING = (
     'ask mbio: a public, read-only MCP server for machinebehavior.io, the research site of Stefan Coetzee.\n'
-    'Endpoint: POST /mcp (MCP streamable HTTP, stateless, no auth). Tools: ask, entity, page.\n'
+    'Endpoint: POST /mcp (MCP streamable HTTP, stateless, no auth). Tools: ask, entity, page, company.\n'
     'Add it to Claude Code: claude mcp add --transport http ask-mbio https://mcp.machinebehavior.io/mcp\n'
     'It reads only files the site publishes: https://machinebehavior.io/llms.txt\n')
 

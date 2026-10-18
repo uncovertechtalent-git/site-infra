@@ -86,10 +86,11 @@ INSIDE_FILES = {
         'layers': [{'name': 'Waking hours', 'members': ['Stefan Coetzee'], 'hours': 'every day 08:00 to 22:00'}],
         'policy': {'name': 'House default', 'steps': [{'after_min': 0, 'schedule': 'primary'}]},
         'pages': [{'alert': 'PagerTestNoAck', 'fired': '2026-10-17T15:24:40Z', 'drill': True, 'resolved_by': 'Alertmanager',
+                   'acknowledged_by': '[click](https://evil.example/)',
                    'time_to_resolve_s': 960}],
         'weeks': [{'week': '2026-W42', 'pages': 3, 'out_of_hours': 0}]},
     '/inside/deploys.json': {'generated': '2026-10-17T16:19:07Z', 'repos': {
-        'uncovertechtalent/machinebehavior.io': [{'name': 'Conformity', 'status': 'completed', 'conclusion': 'success',
+        'uncovertechtalent/machinebehavior.io': [{'name': 'CI ![i](https://evil.example/c?d=) <b>', 'status': 'completed', 'conclusion': 'success',
                                                   'event': 'push', 'run_number': 266, 'display_title': 'Fix <b>it</b> ![x](https://evil.example/)',
                                                   'html_url': 'https://github.com/x/runs/1', 'run_started_at': '2026-10-17T16:14:27Z'}],
         'uncovertechtalent/tychat.io': [{'name': 'Conformity', 'status': 'completed', 'conclusion': 'success',
@@ -365,7 +366,7 @@ class Company(Base):
     def test_answers_hold_the_facts(self):
         _, text = self.call('company', {'topic': 'on_call'})
         self.assertIn('- primary: Stefan Coetzee (human). Waking hours.', text)
-        self.assertIn('PagerTestNoAck at 2026-10-17T15:24:40Z (drill)', text)
+        self.assertIn('PagerTestNoAck at 2026-10-17T15:24:40Z (drill): acknowledged by click https://evil.example/,', text)
         _, text = self.call('company', {'topic': 'incidents'})
         self.assertLess(text.index('Search degraded'), text.index('Old outage'), 'open incidents first')
         self.assertIn('Write-up: https://machinebehavior.io/inside/docs/obs/x/', text)
@@ -387,6 +388,8 @@ class Company(Base):
         self.assertEqual(text.count(f'</{tag}>'), 2)
         _, text = self.call('company', {'topic': 'deploys', 'filter': 'machinebehavior'})
         self.assertIn('Fix b it /b x https://evil.example/', text)
+        self.assertIn('- CI i https://evil.example/c?d= b #266', text)
+        self.assertNotIn('![', text)
         self.assertNotIn('tychat', text.split('<inside-', 1)[1])
 
     def test_arguments_and_failures(self):
