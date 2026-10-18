@@ -8,7 +8,7 @@ ASK_SITE is where the published files are read from: the live site by default, o
 served with `python3 -m http.server 8000`. Each request becomes a function URL event (payload 2.0), as on Lambda.
 """
 import argparse, base64, os, sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -17,8 +17,11 @@ import handler  # noqa: E402
 
 class Dev(BaseHTTPRequestHandler):
     def _serve(self):
-        n = int(self.headers.get('Content-Length') or 0)
-        body = self.rfile.read(min(n, handler.MAX_BODY * 2)) if n else b''
+        try:
+            n = max(0, min(int(self.headers.get('Content-Length') or 0), handler.MAX_BODY * 2))
+        except ValueError:
+            n = 0
+        body = self.rfile.read(n) if n else b''
         event = {
             'rawPath': self.path.split('?', 1)[0],
             'headers': {k.lower(): v for k, v in self.headers.items()},
@@ -47,7 +50,7 @@ def main():
     ap.add_argument('--port', type=int, default=8787)
     port = ap.parse_args().port
     print(f'ask mbio preview on http://127.0.0.1:{port}/mcp, reading {handler.SITE}', file=sys.stderr)
-    ThreadingHTTPServer(('127.0.0.1', port), Dev).serve_forever()
+    HTTPServer(('127.0.0.1', port), Dev).serve_forever()  # one request at a time, like one Lambda instance
 
 
 if __name__ == '__main__':
