@@ -1,9 +1,9 @@
 mock_provider "aws" {}
 
 variables {
-  role_name      = "ask-example-lambda"
-  function_name  = "ask-example"
-  log_group_arn  = "arn:aws:logs:eu-central-1:123456789012:log-group:/aws/lambda/ask-example"
+  role_name     = "ask-example-lambda"
+  function_name = "ask-example"
+  log_group_arn = "arn:aws:logs:eu-central-1:123456789012:log-group:/aws/lambda/ask-example"
 }
 
 run "writes_its_own_log_group_only" {
