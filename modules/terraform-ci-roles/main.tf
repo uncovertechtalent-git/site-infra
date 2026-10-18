@@ -212,7 +212,11 @@ locals {
   log_group_arns = flatten([for f in var.functions : [f.log_group_arn, "${f.log_group_arn}:*"]])
   web_acl_arns   = [for f in var.functions : f.web_acl_arn]
 
-  plan_function_statements = length(var.functions) == 0 ? [] : [
+  # One element per statement when var.functions is not empty, none when it is
+  # (a conditional cannot return tuples of different lengths).
+  functions_on = length(var.functions) > 0 ? [true] : []
+
+  plan_function_statements = flatten([for _ in local.functions_on : [
     {
       Sid      = "ReadFunctions"
       Effect   = "Allow"
@@ -225,9 +229,9 @@ locals {
       Action   = ["wafv2:Get*", "wafv2:List*", "logs:DescribeLogGroups", "logs:ListTagsLogGroup"]
       Resource = "*"
     },
-  ]
+  ]])
 
-  apply_function_statements = length(var.functions) == 0 ? [] : [
+  apply_function_statements = flatten([for _ in local.functions_on : [
     {
       Sid    = "Functions"
       Effect = "Allow"
@@ -279,7 +283,7 @@ locals {
       Resource  = "*"
       Condition = { StringEquals = { "aws:RequestedRegion" = "us-east-1" } }
     },
-  ]
+  ]])
 }
 
 resource "aws_iam_role" "plan" {

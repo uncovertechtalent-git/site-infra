@@ -31,7 +31,7 @@ resource "aws_lambda_function" "this" {
   function_name                  = var.name
   description                    = "MCP server for ${var.host} (read-only)"
   role                           = var.execution_role_arn
-  runtime                        = "python3.13"
+  runtime                        = "python3.12" # the python3 of the CI runner image (ubuntu-24.04), where the tests run
   architectures                  = ["arm64"]
   handler                        = "handler.handler"
   filename                       = data.archive_file.package.output_path
