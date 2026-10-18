@@ -5,8 +5,9 @@
 #          resources the stacks manage, IAM metadata. Plans run with
 #          -lock=false, so no write at all.
 #   apply: jobs in one GitHub environment (required reviewer, main only).
-#          Writes the resources of the shared and site stacks, and their
-#          state. No IAM action at all, no write to the bootstrap state or the
+#          Writes the resources of the shared, site and function stacks, and
+#          their state. No IAM action except iam:PassRole of the listed
+#          function roles to Lambda; no write to the bootstrap state or the
 #          tfvars, no change to the state bucket itself: IAM and the state
 #          bucket belong to the bootstrap stack, which only the operator
 #          applies (README, "Break-glass").
@@ -42,7 +43,7 @@ locals {
 
   plan_policy = {
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Sid      = "ReadStateAndVariables"
         Effect   = "Allow"
@@ -77,12 +78,12 @@ locals {
         ]
         Resource = "*"
       },
-    ]
+    ], local.plan_function_statements)
   }
 
   apply_policy = {
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Sid       = "ListState"
         Effect    = "Allow"
@@ -199,8 +200,86 @@ locals {
         ]
         Resource = "*"
       },
-    ]
+    ], local.apply_function_statements)
   }
+
+  # Functions behind CloudFront (var.functions, for example the MCP endpoint): the
+  # function, its log group, its web ACL, and passing its one execution role to
+  # Lambda. The apply role still cannot create, change or attach a role or a
+  # policy; iam:PassRole names one role, which the bootstrap stack defines, and
+  # only for the Lambda service.
+  function_arns  = flatten([for f in var.functions : [f.function_arn, "${f.function_arn}:*"]])
+  log_group_arns = flatten([for f in var.functions : [f.log_group_arn, "${f.log_group_arn}:*"]])
+  web_acl_arns   = [for f in var.functions : f.web_acl_arn]
+
+  plan_function_statements = length(var.functions) == 0 ? [] : [
+    {
+      Sid      = "ReadFunctions"
+      Effect   = "Allow"
+      Action   = ["lambda:Get*", "lambda:List*"]
+      Resource = local.function_arns
+    },
+    {
+      Sid      = "ReadWebAclsAndLogGroups"
+      Effect   = "Allow"
+      Action   = ["wafv2:Get*", "wafv2:List*", "logs:DescribeLogGroups", "logs:ListTagsLogGroup"]
+      Resource = "*"
+    },
+  ]
+
+  apply_function_statements = length(var.functions) == 0 ? [] : [
+    {
+      Sid    = "Functions"
+      Effect = "Allow"
+      Action = [
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction*",
+        "lambda:UpdateFunction*",
+        "lambda:PutFunction*",
+        "lambda:CreateFunctionUrlConfig",
+        "lambda:AddPermission",
+        "lambda:RemovePermission",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:Get*",
+        "lambda:List*",
+      ]
+      Resource = local.function_arns
+    },
+    {
+      Sid       = "PassTheFunctionRolesToLambdaOnly"
+      Effect    = "Allow"
+      Action    = "iam:PassRole"
+      Resource  = [for f in var.functions : f.role_arn]
+      Condition = { StringEquals = { "iam:PassedToService" = "lambda.amazonaws.com" } }
+    },
+    {
+      Sid      = "FunctionLogGroups"
+      Effect   = "Allow"
+      Action   = ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagLogGroup", "logs:UntagLogGroup", "logs:ListTagsLogGroup"]
+      Resource = local.log_group_arns
+    },
+    {
+      Sid      = "ListLogGroups"
+      Effect   = "Allow"
+      Action   = "logs:DescribeLogGroups"
+      Resource = "*"
+    },
+    {
+      Sid       = "FunctionWebAcls"
+      Effect    = "Allow"
+      Action    = ["wafv2:CreateWebACL", "wafv2:UpdateWebACL", "wafv2:DeleteWebACL", "wafv2:GetWebACL", "wafv2:TagResource", "wafv2:UntagResource", "wafv2:ListTagsForResource"]
+      Resource  = local.web_acl_arns
+      Condition = { StringEquals = { "aws:RequestedRegion" = "us-east-1" } }
+    },
+    {
+      Sid       = "ListWebAcls"
+      Effect    = "Allow"
+      Action    = "wafv2:ListWebACLs"
+      Resource  = "*"
+      Condition = { StringEquals = { "aws:RequestedRegion" = "us-east-1" } }
+    },
+  ]
 }
 
 resource "aws_iam_role" "plan" {

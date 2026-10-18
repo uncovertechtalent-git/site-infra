@@ -10,11 +10,21 @@
 #   environment) for this repository's Terraform workflow
 # - one deploy role per site, for the content deploy of the site repository
 # - the read-only role of the stats job that reads the access logs
+# - one execution role per Lambda function (its own log group only), which
+#   the apply role may pass to Lambda and to nothing else
 
 data "aws_partition" "current" {}
 
 locals {
   partition = data.aws_partition.current.partition
+
+  # Lambda functions behind CloudFront that CI deploys (README, "ask mbio").
+  functions = {
+    "ask-mbio" = { region = var.region }
+  }
+  function_log_groups = {
+    for name, f in local.functions : name => "arn:${local.partition}:logs:${f.region}:${var.aws_account_id}:log-group:/aws/lambda/${name}"
+  }
 }
 
 module "state_bucket" {
@@ -42,6 +52,22 @@ module "terraform_ci_roles" {
   state_bucket_name    = module.state_bucket.bucket_name
   managed_bucket_names = concat([var.log_bucket_name], [for s in values(var.sites) : s.bucket_name])
   hosted_zone_ids      = distinct([for s in values(var.sites) : s.zone_id])
+  functions = [for name, f in local.functions : {
+    function_arn  = "arn:${local.partition}:lambda:${f.region}:${var.aws_account_id}:function:${name}"
+    role_arn      = module.function_role[name].role_arn
+    log_group_arn = local.function_log_groups[name]
+    web_acl_arn   = "arn:${local.partition}:wafv2:us-east-1:${var.aws_account_id}:global/webacl/${name}/*"
+  }]
+}
+
+module "function_role" {
+  source   = "../../modules/lambda-role"
+  for_each = local.functions
+
+  role_name      = "${each.key}-lambda"
+  function_name  = each.key
+  aws_account_id = var.aws_account_id
+  log_group_arn  = local.function_log_groups[each.key]
 }
 
 module "deploy_role" {

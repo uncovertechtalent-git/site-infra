@@ -18,3 +18,6 @@ modules/**/.terraform.lock.hcl
 
 # Python bytecode from running the scripts.
 __pycache__/
+
+# The function zip that archive_file builds at plan time.
+.build/

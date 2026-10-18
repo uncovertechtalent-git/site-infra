@@ -151,3 +151,74 @@ run "plan_role_can_find_buckets" {
     error_message = "The plan role may list (HeadBucket) the managed buckets; without it a plan re-creates them."
   }
 }
+
+run "functions_add_one_pass_role_to_lambda_and_no_other_iam" {
+  command = plan
+
+  variables {
+    functions = [{
+      function_arn  = "arn:aws:lambda:eu-central-1:123456789012:function:ask-example"
+      role_arn      = "arn:aws:iam::123456789012:role/ask-example-lambda"
+      log_group_arn = "arn:aws:logs:eu-central-1:123456789012:log-group:/aws/lambda/ask-example"
+      web_acl_arn   = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/ask-example/*"
+    }]
+  }
+
+  assert {
+    condition = [
+      for a in flatten([for s in jsondecode(aws_iam_role_policy.apply.policy).Statement : s.Action if s.Effect == "Allow"]) : a
+      if startswith(a, "iam:") || startswith(a, "sts:") || a == "*" || endswith(a, ":*")
+    ] == ["iam:PassRole"]
+    error_message = "With functions, the only IAM action is iam:PassRole; still no STS action and no service-wide wildcard."
+  }
+
+  assert {
+    condition = one([for s in jsondecode(aws_iam_role_policy.apply.policy).Statement : s if s.Sid == "PassTheFunctionRolesToLambdaOnly"]) == {
+      Sid       = "PassTheFunctionRolesToLambdaOnly"
+      Effect    = "Allow"
+      Action    = "iam:PassRole"
+      Resource  = ["arn:aws:iam::123456789012:role/ask-example-lambda"]
+      Condition = { StringEquals = { "iam:PassedToService" = "lambda.amazonaws.com" } }
+    }
+    error_message = "iam:PassRole names the function role only, and only for the Lambda service."
+  }
+
+  assert {
+    condition = one([for s in jsondecode(aws_iam_role_policy.apply.policy).Statement : s.Resource if s.Sid == "Functions"]) == [
+      "arn:aws:lambda:eu-central-1:123456789012:function:ask-example",
+      "arn:aws:lambda:eu-central-1:123456789012:function:ask-example:*",
+    ]
+    error_message = "Lambda actions on the listed function (and its versions) only."
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_role_policy.apply.policy).Statement : s.Condition.StringEquals["aws:RequestedRegion"] == "us-east-1"
+      if startswith(s.Sid, "FunctionWebAcls") || s.Sid == "ListWebAcls"
+    ])
+    error_message = "Web ACL actions only in us-east-1 (CLOUDFRONT scope)."
+  }
+
+  assert {
+    condition = length([
+      for a in flatten([for s in jsondecode(aws_iam_role_policy.plan.policy).Statement : s.Action]) : a
+      if length(regexall("^[a-z0-9]+:(Get|List|Describe)", a)) == 0
+    ]) == 0
+    error_message = "With functions, the plan role still only reads."
+  }
+}
+
+run "a_wildcard_function_is_refused" {
+  command = plan
+
+  variables {
+    functions = [{
+      function_arn  = "arn:aws:lambda:eu-central-1:123456789012:function:*"
+      role_arn      = "arn:aws:iam::123456789012:role/*"
+      log_group_arn = "arn:aws:logs:eu-central-1:123456789012:log-group:*"
+      web_acl_arn   = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/*"
+    }]
+  }
+
+  expect_failures = [var.functions]
+}

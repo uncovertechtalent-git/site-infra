@@ -22,3 +22,8 @@ output "log_reader_role_arn" {
   description = "role_arn of the stats job's AWS profile."
   value       = module.log_reader.role_arn
 }
+
+output "function_role_arns" {
+  description = "Per Lambda function: its execution role (the function stack names it by convention, <function>-lambda)."
+  value       = { for name, m in module.function_role : name => m.role_arn }
+}
