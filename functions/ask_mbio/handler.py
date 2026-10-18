@@ -54,7 +54,7 @@ MAX_NEIGHBOURS = 25
 MAX_QUERY_TERMS = 32
 PER_PAGE = 2             # passages per page in one answer
 FETCH_TIMEOUT = 5         # per socket operation
-FETCH_DEADLINE = 10       # per file, the whole read
+FETCH_DEADLINE = 8        # per file, the whole read; two cold reads fit the function's 25 s timeout
 RETRY_AFTER = 30          # seconds without a fetch after a first read failed (no copy to fall back on)
 CAPS = {'index': 20_000_000, 'graph': 8_000_000, 'twin': 2_000_000, 'snapshot': 1_000_000}
 TWIN_CACHE_BYTES = 16_000_000
@@ -64,13 +64,15 @@ K1, B = 1.2, 0.75
 LOGGED_METHODS = {'initialize', 'ping', 'tools/list', 'tools/call', 'notifications/initialized',
                   'notifications/cancelled', 'resources/list', 'prompts/list', 'resources/templates/list'}
 FIRST_PARTY_SITES = {'mb', 'tychat', 'utt', 'substack'}  # map 'site' values of Stefan Coetzee's own sites
+OWN_BOOST = 1.15          # an own page wins a close match; a clearly better external title still wins
 
 STOP = set('a an and are as at be but by for from has have how i if in into is it its of on or that the their them then '
            'there these they this to was were what when where which who why will with you your does do did can about '
            'mbio machinebehavior'.split())
 ASCII_CONTROL = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 # Invisible characters that are not format, control, private-use, surrogate or unassigned code points by category.
-INVISIBLE_EXTRA = re.compile('[\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u3164\ufe00-\ufe0f\uffa0\U000e0100-\U000e01ef]')
+INVISIBLE_EXTRA = re.compile('[\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u2800\u3164\ufe00-\ufe0f\uffa0\U000e0100-\U000e01ef]')
+LT_LOOKALIKE = re.compile('[\ufe64\uff1c\u2329\u3008\u27e8]')  # small, fullwidth and angle-bracket forms of <
 DROP_CATEGORIES = {'Cc', 'Cf', 'Co', 'Cs', 'Cn'}
 
 
@@ -220,7 +222,7 @@ def fetch(path, cap, etag=None):
             while True:
                 if time.monotonic() > deadline:
                     raise DataError(f'{path}: read took longer than {FETCH_DEADLINE} s')
-                chunk = r.read(65536)
+                chunk = r.read1(65536)  # returns what has arrived, so a trickling server cannot outlast the deadline
                 if not chunk:
                     break
                 size += len(chunk)
@@ -255,12 +257,13 @@ def _visible(ch):
 
 def clean(s, cap=None):
     """A string from the data, safe to quote: control, format (zero-width, bidirectional, tag), private-use, surrogate,
-    unassigned and other invisible characters removed, compatibility forms folded (NFKC), length capped."""
+    unassigned (in this runtime's Unicode database) and other invisible characters removed, composed (NFC) so that
+    "O(n\u00b2)" keeps its meaning, length capped."""
     s = s if isinstance(s, str) else ''
     if s.isascii():
         s = ASCII_CONTROL.sub('', s)
     else:
-        s = INVISIBLE_EXTRA.sub('', unicodedata.normalize('NFKC', s))
+        s = INVISIBLE_EXTRA.sub('', unicodedata.normalize('NFC', s))
         s = ''.join(ch for ch in s if ((' ' <= ch < '\x7f' or ch in '\t\n') if ch.isascii() else _visible(ch)))
     if cap and len(s) > cap:
         s = s[:cap - 1].rstrip() + '\u2026'
@@ -268,9 +271,11 @@ def clean(s, cap=None):
 
 
 def plain(s, cap=MAX_FIELD):
-    """A third-party string on one line, without markup a model could act on: no angle brackets, no link or image
-    syntax (square brackets, parentheses, exclamation marks become spaces)."""
-    return re.sub(r'\s+', ' ', re.sub(r'[<>\[\]()!`*_|{}]', ' ', clean(s, cap * 2))).strip()[:cap]
+    """A third-party string on one line, without markup a model could act on: compatibility forms folded (NFKC, so a
+    fullwidth bracket is a bracket), then no angle brackets and no link or image syntax (square brackets, parentheses,
+    exclamation marks become spaces)."""
+    s = unicodedata.normalize('NFKC', clean(s, cap * 2))
+    return re.sub(r'\s+', ' ', re.sub(r'[<>\[\]()!`*_|{}]', ' ', clean(s))).strip()[:cap]
 
 
 def one_line(s, cap=MAX_FIELD):
@@ -292,7 +297,11 @@ def canon_url(raw, base):
         s = base + s
     elif not re.match(r'^[a-z][a-z0-9+.-]*://', s, re.I):
         s = 'https://' + s
-    p = urlparse(s)
+    try:
+        p = urlparse(s)
+        p.port  # raises ValueError on a bad port
+    except ValueError:
+        return None
     if p.scheme.lower() not in ('http', 'https') or not p.netloc:
         return None
     host = p.netloc.lower().split('@')[-1].removeprefix('www.')
@@ -417,7 +426,8 @@ class Graph:
             shared = q & ws
             if shared:
                 score = sum(self.idf[w] for w in shared) / (1 + 0.1 * len(ws - q))
-                scored.append((not self.first_party(u), -score, -self.degree(u), u))
+                score *= OWN_BOOST if self.first_party(u) else 1.0
+                scored.append((-score, not self.first_party(u), -self.degree(u), u))
         scored.sort()
         ids = [x[3] for x in scored[:5]]
         return (ids[0], ids[1:]) if ids else (None, [])
@@ -471,13 +481,20 @@ class Store:
         return self.graph
 
     def get_twin(self, twin_url):
+        """A page's markdown twin, cleaned once and cached; after a failed read, RETRY_AFTER seconds before the next."""
         path = urlparse(twin_url).path
         hit = self.twins.get(path)
         if hit and time.monotonic() - hit[0] <= TTL:
             self.twins.move_to_end(path)
             return hit[1]
-        _, raw, _ = fetch(path, CAPS['twin'])
-        text = raw.decode('utf-8', errors='replace')
+        if time.monotonic() - self.failed_at.get(path, -RETRY_AFTER) < RETRY_AFTER:
+            raise DataError(f'{path}: failed less than {RETRY_AFTER} s ago')
+        try:
+            _, raw, _ = fetch(path, CAPS['twin'])
+        except DataError:
+            self.failed_at[path] = time.monotonic()
+            raise
+        text = clean(raw.decode('utf-8', errors='replace'))
         if hit:
             self.twin_bytes -= sys.getsizeof(hit[1])
         self.twins[path] = (time.monotonic(), text)
@@ -548,7 +565,8 @@ def new_tag(kind):
 def quote_block(text):
     """Quoted page text for inside the response's tags. After clean() (NFKC, invisible characters gone), any tag of the
     passage or page kind in the text is escaped as well."""
-    return re.sub(r'(?i)<(\s*/?\s*)(passage|page)', r'&lt;\1\2', clean(text))
+    text = LT_LOOKALIKE.sub('&lt;', clean(text))
+    return re.sub(r'(?i)<(\s*/?\s*)(passage|page|inside)', r'&lt;\1\2', text)
 
 
 def tool_ask(args):
@@ -650,7 +668,7 @@ def tool_page(args):
     p = idx.pages[i]
     if not p['m'].startswith(idx.site + '/'):
         raise DataError('passage index: twin outside the site')
-    text = clean(STORE.get_twin(p['m']))
+    text = STORE.get_twin(p['m'])
     note = ''
     if len(text) > MAX_PAGE_CHARS:
         cut = text.rfind('\n\n', 0, MAX_PAGE_CHARS)
