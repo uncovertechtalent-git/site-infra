@@ -56,6 +56,13 @@ variable "origin_secret" {
   }
 }
 
+variable "origin_secret_previous" {
+  description = "The old origin secret while it rotates (the function accepts both); empty otherwise. Set in local tfvars."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "memory_mb" {
   description = "Function memory (CPU scales with it)."
   type        = number

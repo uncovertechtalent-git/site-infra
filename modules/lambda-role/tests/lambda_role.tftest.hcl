@@ -21,7 +21,7 @@ run "writes_its_own_log_group_only" {
   }
 
   assert {
-    condition = jsondecode(aws_iam_role.this.assume_role_policy).Statement[0].Principal == { Service = "lambda.amazonaws.com" } && jsondecode(aws_iam_role.this.assume_role_policy).Statement[0].Condition == { StringEquals = { "aws:SourceAccount" = "123456789012" } }
+    condition     = jsondecode(aws_iam_role.this.assume_role_policy).Statement[0].Principal == { Service = "lambda.amazonaws.com" } && jsondecode(aws_iam_role.this.assume_role_policy).Statement[0].Condition == { StringEquals = { "aws:SourceAccount" = "123456789012" } }
     error_message = "Only this account's Lambda service may assume the role."
   }
 }

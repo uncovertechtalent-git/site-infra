@@ -41,7 +41,8 @@ resource "aws_lambda_function" "this" {
   reserved_concurrent_executions = var.reserved_concurrency
 
   environment {
-    variables = merge(var.environment, { ORIGIN_SECRET = var.origin_secret })
+    variables = merge(var.environment, { ORIGIN_SECRET = var.origin_secret },
+    var.origin_secret_previous == "" ? {} : { ORIGIN_SECRET_PREVIOUS = var.origin_secret_previous })
   }
 
   logging_config {

@@ -28,3 +28,19 @@ misconfigurations:
       No WAF. The origin is a private bucket of static files: no forms, no
       origin compute, no login. AWS Shield Standard covers every distribution
       at no charge. Revisit if the site gains a dynamic origin.
+  - id: AWS-0017
+    paths:
+      - "modules/mcp-endpoint/main.tf"
+    statement: >-
+      The MCP function's log group holds counts only (method, tool, status,
+      result count, milliseconds), never a question, an argument or an
+      address. CloudWatch Logs encrypts it at rest with a service key; a
+      customer managed key would add a key to manage for no data that needs it.
+  - id: AWS-0066
+    paths:
+      - "modules/mcp-endpoint/main.tf"
+    statement: >-
+      No X-Ray tracing on the MCP function. A trace is a stored record per
+      request, which the counts-only logging avoids. The log line carries the
+      latency, and the function makes at most two outbound reads, both to the
+      public site.

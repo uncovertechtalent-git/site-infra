@@ -106,6 +106,11 @@ run "defaults_hold_the_limits" {
   }
 
   assert {
+    condition     = !contains(keys(aws_lambda_function.this.environment[0].variables), "ORIGIN_SECRET_PREVIOUS")
+    error_message = "no second secret unless one rotates"
+  }
+
+  assert {
     condition     = length(aws_route53_record.host) == 0
     error_message = "no public DNS record until attach_dns"
   }
@@ -113,6 +118,19 @@ run "defaults_hold_the_limits" {
   assert {
     condition     = output.endpoint == "https://d111111abcdef8.cloudfront.net/mcp"
     error_message = "before attach_dns the endpoint is the distribution domain"
+  }
+}
+
+run "rotation_passes_both_secrets" {
+  command = plan
+
+  variables {
+    origin_secret_previous = "fedcba9876543210fedcba9876543210"
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.environment[0].variables["ORIGIN_SECRET_PREVIOUS"] == "fedcba9876543210fedcba9876543210"
+    error_message = "while it rotates, the function accepts the old secret too"
   }
 }
 

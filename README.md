@@ -18,13 +18,14 @@ The repository is public on purpose: every artifact of the work is here to audit
 | Role | Trusted by | May |
 |---|---|---|
 | `site-infra-terraform-plan` | pull request jobs of this repository | read the state and the tfvars, read the managed resources and IAM metadata; write nothing |
-| `site-infra-terraform-apply` | jobs in the `production` environment of this repository | write the managed buckets, CloudFront, certificates in us-east-1, records in the site zones, log delivery, and the shared and site state. No IAM action at all; no write to the bootstrap state, the tfvars or the state bucket's settings |
+| `site-infra-terraform-apply` | jobs in the `production` environment of this repository | write the managed buckets, CloudFront, certificates in us-east-1, records in the site zones, log delivery, the listed Lambda functions with their log groups and web ACLs, and the shared, site and function state. No IAM action except `iam:PassRole` of each listed function's own execution role, to Lambda only; no write to the bootstrap state, the tfvars or the state bucket's settings |
+| `<function>-lambda` | the Lambda service of this account | write its own function's log group; nothing else |
 | `<site>-github-deploy` | the main branch of the site repository | list and write that site's bucket, invalidate that site's distribution |
 | `site-infra-access-logs-<suffix>-reader` | the operator host's stats job | list and read the log bucket |
 
 The state bucket's own policy backs the roles up, whatever IAM allows: only the apply role and the operator write or delete state objects, and only the operator writes the bootstrap state and the tfvars.
 
-All IAM lives in the bootstrap stack. The apply role cannot create, change or attach a role or policy, so nothing that CI runs can widen its own access. `scripts/role-boundaries.sh` checks 16 of these limits with the IAM policy simulator after each bootstrap apply.
+All IAM lives in the bootstrap stack. The apply role cannot create, change or attach a role or policy, so nothing that CI runs can widen its own access. The one IAM action it has is `iam:PassRole` on the execution role of each function in the bootstrap's `functions` list, with `iam:PassedToService = lambda.amazonaws.com`: CI can deploy the function, and the function can do only what that role allows (write its own logs). `scripts/role-boundaries.sh` checks 26 of these limits with the IAM policy simulator after each bootstrap apply.
 
 ### Configuration that stays private
 
@@ -63,10 +64,14 @@ modules/
   terraform-ci-roles/  OIDC plan role (pull requests) and apply role (production environment)
   cloudflare-access-app/  Cloudflare Access application, Allow policy by email, one-time PIN login
   log-reader-role/     read-only role of the stats job
+  lambda-role/         execution role of one Lambda function: its own log group only
+  mcp-endpoint/        Lambda function and URL, CloudFront with a secret origin header,
+                       WAF rate limit per IP, ACM certificate, logging v2, DNS switch
 live/
   bootstrap/           state bucket, OIDC provider, every IAM role (operator only)
   shared/              log bucket
   machinebehavior.io/  the site, with the cutover switches
+  mcp.machinebehavior.io/  the ask mbio MCP server, with its launch switch (attach_dns)
   cloudflare-access/   Access in front of the tunnel hostnames (operator only)
 scripts/
   tf.sh                plan and apply on the operator host (bootstrap, break-glass)
@@ -151,7 +156,17 @@ The server holds no data of its own. It reads files the site already publishes, 
 - **Privacy.** One log line per request: method (known MCP methods only, else `other`), tool, HTTP status, result count, milliseconds, and the reason when a request is refused. Never the question, a tool argument, an IP address or a User-Agent; an exception is logged by its type name only. Tests check the question, the arguments, free-text method names and exception messages.
 - **Preview.** `ASK_SITE=<site> python3 functions/ask_mbio/dev_server.py` serves the handler on `127.0.0.1:8787`; then `claude mcp add --transport http ask-mbio-preview http://127.0.0.1:8787/mcp`. `ASK_SITE` defaults to the live site; a local site build served with `python3 -m http.server` works too.
 
-Launch: the server goes public only after the site's privacy notice covers it (uncovertechtalent/machinebehavior.io#11).
+### Hosting
+
+`live/mcp.machinebehavior.io` (module `mcp-endpoint`): the function (Python 3.12, arm64, 512 MB, 15 s, reserved concurrency 5) behind a function URL with auth NONE, behind CloudFront. Lambda's origin access control would need the client to send the SHA-256 of each POST body, which MCP clients do not do, so CloudFront adds a secret `X-Origin-Verify` header instead and the function answers 403 without it. A WAF web ACL in front of the distribution blocks an IP address after 300 requests in 5 minutes with 429; its sampled requests are off, because they would keep addresses and headers. CloudFront logs (v2) to the shared log bucket record date, time, edge, method, path, status, bytes and timings only: no address, User-Agent, referrer, country or request id. The function's log group keeps its counts-only lines for 14 days. The function needs no AWS permission beyond its logs; its role is in the bootstrap stack.
+
+Private values: `origin_secret` in the stack's tfvars (`openssl rand -hex 32`), with the account id, zone id and log bucket name, pushed with `scripts/tf.sh mcp.machinebehavior.io push-vars`. To rotate: in the tfvars set `origin_secret_previous` to the current value and `origin_secret` to a new one, push the vars, apply (the function accepts both while CloudFront's edges switch over), then empty `origin_secret_previous` and apply again.
+
+Order for the first deploy: bootstrap (the execution role and the CI rights, operator) and `scripts/role-boundaries.sh`, then the tfvars, then the stack through CI. The preview is `terraform output endpoint` (the CloudFront domain).
+
+### Launch
+
+`attach_dns = false` keeps `mcp.machinebehavior.io` off DNS; the endpoint answers on its CloudFront domain only. The server goes public, `attach_dns = true` and a line in the site's `llms.txt`, only after the site's privacy notice covers it (uncovertechtalent/machinebehavior.io#11), on Stefan Coetzee's go.
 
 ## Cloudflare Access in front of the tunnel
 
@@ -161,7 +176,7 @@ The stack is the operator's, like bootstrap. CI validates it and runs the module
 
 ## Accepted findings
 
-trivy findings that are accepted, each with its reason, are in `.trivyignore.yaml`: SSE-S3 instead of customer managed KMS keys, no S3 server access logging, no WAF in front of a static origin. A new finding fails CI until it is fixed or recorded there.
+trivy findings that are accepted, each with its reason, are in `.trivyignore.yaml`: SSE-S3 instead of customer managed KMS keys, no S3 server access logging, no WAF in front of a static origin, no customer managed key for the MCP function's counts-only log group, no X-Ray tracing of the MCP function. A new finding fails CI until it is fixed or recorded there.
 
 ## Next: a self-hosted runner in the enterprise pattern
 

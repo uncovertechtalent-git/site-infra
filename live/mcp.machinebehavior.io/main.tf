@@ -26,7 +26,9 @@ module "endpoint" {
   package_dir        = "${path.root}/.build"
   execution_role_arn = "arn:aws:iam::${var.aws_account_id}:role/${local.function_name}-lambda"
   origin_secret      = var.origin_secret
-  log_bucket_arn     = data.aws_s3_bucket.logs.arn
+
+  origin_secret_previous = var.origin_secret_previous
+  log_bucket_arn         = data.aws_s3_bucket.logs.arn
 
   environment = {
     ASK_SITE        = "https://machinebehavior.io"

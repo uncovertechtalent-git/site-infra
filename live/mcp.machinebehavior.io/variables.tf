@@ -30,6 +30,13 @@ variable "origin_secret" {
   sensitive   = true
 }
 
+variable "origin_secret_previous" {
+  description = "The old origin secret while it rotates; empty otherwise. Set in local tfvars."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "attach_dns" {
   description = "Launch switch: the A and AAAA records of mcp.machinebehavior.io. Only after the site's privacy notice covers the server, on Stefan Coetzee's go."
   type        = bool
