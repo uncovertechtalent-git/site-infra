@@ -6,6 +6,8 @@ terraform {
       source  = "hashicorp/aws"
       version = "6.68.0"
     }
+    # Used by the mcp-endpoint module (the function zip); pinned here like aws.
+    # tflint-ignore: terraform_unused_required_providers
     archive = {
       source  = "hashicorp/archive"
       version = "2.7.1"
