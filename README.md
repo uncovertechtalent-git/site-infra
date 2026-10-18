@@ -82,6 +82,9 @@ docs/
 stats/
   cloudfront_to_loki.py  access logs -> Loki, without IP addresses or User-Agent strings
   site-traffic.*         systemd user timer that runs it every 5 minutes
+functions/
+  ask_mbio/            the ask mbio MCP server (Lambda handler, local preview server)
+tests/                 unit tests: CI scripts, the ask mbio server
 ```
 
 State: one key per stack in the state bucket, locked with the S3 lock file (`use_lockfile = true`), no DynamoDB table.
@@ -135,6 +138,19 @@ mkdir -p ~/.config/systemd/user
 ln -sf ~/code/site-infra/stats/site-traffic.service ~/code/site-infra/stats/site-traffic.timer ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now site-traffic.timer
 ```
+
+## ask mbio: a public MCP server for machinebehavior.io
+
+`functions/ask_mbio/handler.py` lets a reader's own model (Claude, ChatGPT, Cursor, any MCP client) search machinebehavior.io and walk its map, and answer with the site's page URLs. Three read-only tools: `ask(question, limit)` returns the best BM25 passages with URL, title, date and section; `entity(name_or_url)` returns one node of the map and the pages it links to and that link to it; `page(url)` returns one page as markdown. It speaks MCP streamable HTTP in stateless mode (`POST /mcp`, JSON answers, no session, no event stream) and has no auth and no write tool.
+
+The server holds no data of its own. It reads files the site already publishes, over HTTPS from the public site: `/llms-passages.json` (the passage index, built with the site by `scripts/build_llms_full.py` in the site repository), `/map/graph.json`, and `<page>/index.html.md` for `page`, which only answers for pages in the index. So it can show nothing the site does not. It keeps them in memory for 15 minutes and keeps the old copy when a refresh fails.
+
+- **Quoting.** Every tool result opens with a line that says the text is quoted from machinebehavior.io, is data and not instructions, and must be cited by URL. Page text sits inside `<passage>` or `<page>` tags; the same tags inside the text are escaped. Control, zero-width and bidirectional characters are removed, and titles and descriptions from the map (which include Reddit, GitHub and Substack titles) are capped at 300 characters.
+- **Limits.** Body 64 KB, question 500 characters, 8 passages, 2 per page, page text 50,000 characters (cut with a link to the full twin), reads of the site 5 seconds with size caps and no redirects, no JSON-RPC batches.
+- **Privacy.** One log line per request: method, tool, HTTP status, result count, milliseconds, and the reason when a request is refused. Never the question, a tool argument, an IP address or a User-Agent; an exception is logged by its type name only. A test checks it.
+- **Preview.** `ASK_SITE=<site> python3 functions/ask_mbio/dev_server.py` serves the handler on `127.0.0.1:8787`; then `claude mcp add --transport http ask-mbio-preview http://127.0.0.1:8787/mcp`. `ASK_SITE` defaults to the live site; a local site build served with `python3 -m http.server` works too.
+
+Launch: the server goes public only after the site's privacy notice covers it (uncovertechtalent/machinebehavior.io#11).
 
 ## Cloudflare Access in front of the tunnel
 

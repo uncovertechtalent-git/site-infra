@@ -83,9 +83,9 @@ jobs:
         run: shellcheck scripts/*.sh scripts/ci/*.sh
 
       - name: Python scripts compile
-        run: python3 -m py_compile scripts/*.py scripts/ci/*.py stats/*.py
+        run: python3 -m py_compile scripts/*.py scripts/ci/*.py stats/*.py functions/*/*.py
 
-      - name: Unit tests of the public-output boundaries (counts-only summary, tfvars masking)
+      - name: Unit tests (counts-only summary, tfvars masking, the ask mbio MCP server)
         run: python3 -m unittest discover -s tests -v
 
       - name: GitHub-hosted runners only
