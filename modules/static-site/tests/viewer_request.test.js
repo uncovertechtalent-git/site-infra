@@ -1,5 +1,6 @@
 // Behaviour test for the viewer-request function: renders the template with a
-// sample table (the machinebehavior.io map) and checks the redirects and the
+// sample table (a subset of the machinebehavior.io rows; the logic does not
+// depend on which rows) and checks the redirects and the
 // pass-through paths. Run: node modules/static-site/tests/viewer_request.test.js
 'use strict';
 const assert = require('assert');
