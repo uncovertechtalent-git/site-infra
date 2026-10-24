@@ -26,9 +26,11 @@ module "site" {
   dns_target             = var.dns_target
   dns_ttl                = var.dns_ttl
 
-  # ADR-0038 URL moves in the machinebehavior.io repo (site/redirects.yml). Prefix rules,
-  # so markdown twins, data files and sub-pages follow their page. Article and
-  # case-file entries are permanent: never remove them.
+  # ADR-0038 URL moves in uncovertechtalent/machinebehavior.io: the source is that
+  # repository's site/redirects.yml (inside/docs/eng/adr-0038-*). Keep this map in step
+  # with it in the same phase. Prefix rules, so markdown twins, data files and
+  # sub-pages follow their page. The article and case-file entries (last four) are
+  # permanent: never remove them, even when rolling back a phase.
   path_redirects = {
     "/continuous-conformity/"                 = "/conformity/standard/"
     "/continuous-conformity-self-assessment/" = "/conformity/self-assessment/"

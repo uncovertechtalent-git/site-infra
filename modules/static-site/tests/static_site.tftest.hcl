@@ -271,3 +271,15 @@ run "path_redirects_reject_unanchored_keys" {
 
   expect_failures = [var.path_redirects]
 }
+
+run "path_redirects_reject_loops" {
+  command = plan
+
+  variables {
+    path_redirects = {
+      "/old/" = "/old/new/"
+    }
+  }
+
+  expect_failures = [var.path_redirects]
+}

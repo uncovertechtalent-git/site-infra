@@ -160,6 +160,13 @@ variable "path_redirects" {
     ])
     error_message = "path_redirects keys and values must start and end with \"/\", and \"/\" itself cannot be a key."
   }
+
+  validation {
+    condition = alltrue([
+      for v in values(var.path_redirects) : alltrue([for k in keys(var.path_redirects) : !startswith(v, k)])
+    ])
+    error_message = "A path_redirects value must not start with any key, or the edge would redirect in a loop."
+  }
 }
 
 variable "tags" {
