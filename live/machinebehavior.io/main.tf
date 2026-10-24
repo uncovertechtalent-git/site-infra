@@ -25,6 +25,25 @@ module "site" {
   attach_canonical_hosts = var.attach_canonical_hosts
   dns_target             = var.dns_target
   dns_ttl                = var.dns_ttl
+
+  # ADR-0038 URL moves in the machinebehavior.io repo (site/redirects.yml). Prefix rules,
+  # so markdown twins, data files and sub-pages follow their page. Article and
+  # case-file entries are permanent: never remove them.
+  path_redirects = {
+    "/continuous-conformity/"                 = "/conformity/standard/"
+    "/continuous-conformity-self-assessment/" = "/conformity/self-assessment/"
+    "/claims/"                                = "/research/claims/"
+    "/experiments/"                           = "/research/experiments/"
+    "/objections/"                            = "/research/objections/"
+    "/evidence/"                              = "/research/evidence/"
+    "/slips/"                                 = "/research/slips/"
+    "/terms/"                                 = "/research/terms/"
+    "/red-team/"                              = "/research/red-team/"
+    "/the-cheating-moved/"                    = "/research/articles/the-cheating-moved/"
+    "/chaos-engineering-for-behaviour/"       = "/research/articles/chaos-engineering-for-behaviour/"
+    "/running-conjobs-for-ai/"                = "/research/case-files/running-conjobs-for-ai/"
+    "/case-12-licence-rule-mid-task/"         = "/research/case-files/case-12-licence-rule-mid-task/"
+  }
 }
 
 # The apex and www records predate this stack (GitHub Pages). Import them once;

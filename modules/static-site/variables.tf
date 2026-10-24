@@ -149,6 +149,19 @@ variable "log_record_fields" {
   }
 }
 
+variable "path_redirects" {
+  description = "Start-anchored path prefix redirects: a request whose path starts with a key answers 301 to the value plus the rest of the path. Keys and values start and end with \"/\". Longest key wins."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for k, v in var.path_redirects : startswith(k, "/") && endswith(k, "/") && startswith(v, "/") && endswith(v, "/") && k != "/"
+    ])
+    error_message = "path_redirects keys and values must start and end with \"/\", and \"/\" itself cannot be a key."
+  }
+}
+
 variable "tags" {
   description = "Tags for the resources, on top of the provider default tags."
   type        = map(string)
