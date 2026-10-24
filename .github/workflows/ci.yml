@@ -56,6 +56,9 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: viewer-request behaviour test (node on the runner image)
+        run: node modules/static-site/tests/viewer_request.test.js
+
   tflint:
     name: tflint and shellcheck
     runs-on: ubuntu-24.04

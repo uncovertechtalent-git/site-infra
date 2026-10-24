@@ -235,3 +235,51 @@ run "security_headers" {
     error_message = "Plain HTTP redirects to HTTPS."
   }
 }
+
+run "path_redirects_default_to_none" {
+  command = plan
+
+  assert {
+    condition     = strcontains(aws_cloudfront_function.viewer_request.code, "var PATH_REDIRECTS = {};")
+    error_message = "With no path_redirects the function carries an empty table."
+  }
+}
+
+run "path_redirects_render_into_the_function" {
+  command = plan
+
+  variables {
+    path_redirects = {
+      "/old/" = "/new/"
+    }
+  }
+
+  assert {
+    condition     = strcontains(aws_cloudfront_function.viewer_request.code, "var PATH_REDIRECTS = {\"/old/\":\"/new/\"};")
+    error_message = "path_redirects render as a JSON table in the function."
+  }
+}
+
+run "path_redirects_reject_unanchored_keys" {
+  command = plan
+
+  variables {
+    path_redirects = {
+      "old" = "/new/"
+    }
+  }
+
+  expect_failures = [var.path_redirects]
+}
+
+run "path_redirects_reject_loops" {
+  command = plan
+
+  variables {
+    path_redirects = {
+      "/old/" = "/old/new/"
+    }
+  }
+
+  expect_failures = [var.path_redirects]
+}

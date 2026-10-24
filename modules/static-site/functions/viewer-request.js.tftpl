@@ -1,11 +1,15 @@
 // CloudFront Function, viewer request, runtime cloudfront-js-2.0.
 // Rendered by Terraform (modules/static-site); edit the template, not the deployed code.
 // 1. A host in REDIRECT_HOSTS answers 301 to the canonical host; path and query stay.
-// 2. A path ending in "/" serves its index.html.
-// 3. A path whose last segment has no dot answers 301 to the same path with "/" added,
+// 2. A path starting with a PATH_REDIRECTS key answers 301 to the mapped prefix plus
+//    the rest of the path; the longest matching key wins. Matches are start-anchored.
+// 3. A path ending in "/" serves its index.html.
+// 4. A path whose last segment has no dot answers 301 to the same path with "/" added,
 //    as GitHub Pages does for directory pages.
 var CANONICAL_HOST = ${jsonencode(canonical_host)};
 var REDIRECT_HOSTS = ${jsonencode(redirect_hosts)};
+var PATH_REDIRECTS = ${jsonencode(path_redirects)};
+var PATH_PREFIXES = Object.keys(PATH_REDIRECTS).sort(function (a, b) { return b.length - a.length; });
 
 function querySuffix(querystring) {
   var parts = [];
@@ -34,6 +38,14 @@ function handler(event) {
 
   if (REDIRECT_HOSTS.indexOf(host) !== -1) {
     return redirect('https://' + CANONICAL_HOST + uri + querySuffix(request.querystring));
+  }
+
+  for (var i = 0; i < PATH_PREFIXES.length; i++) {
+    var prefix = PATH_PREFIXES[i];
+    if (uri.indexOf(prefix) === 0 || uri + '/' === prefix) {
+      var rest = uri.length > prefix.length ? uri.substring(prefix.length) : '';
+      return redirect('https://' + host + PATH_REDIRECTS[prefix] + rest + querySuffix(request.querystring));
+    }
   }
 
   if (uri.endsWith('/')) {

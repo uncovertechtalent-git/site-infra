@@ -58,6 +58,7 @@ resource "aws_cloudfront_function" "viewer_request" {
   code = templatefile("${path.module}/functions/viewer-request.js.tftpl", {
     canonical_host = var.canonical_host
     redirect_hosts = local.redirect_hosts
+    path_redirects = var.path_redirects
   })
 }
 

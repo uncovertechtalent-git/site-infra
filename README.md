@@ -58,7 +58,10 @@ modules/
   state-bucket/        state bucket: versioned, encrypted, private, TLS only
   log-bucket/          access log bucket, log delivery policy, read-only reader role
   static-site/         site bucket, OAC, CloudFront, ACM certificate, viewer-request
-                       function, security headers, standard logging v2, Route 53 records
+                       function, security headers, standard logging v2, Route 53 records;
+                       optional path_redirects: start-anchored prefix 301s, longest key
+                       wins, after www-to-apex and before the index document
+                       (behaviour test: node modules/static-site/tests/viewer_request.test.js)
   github-deploy-role/  OIDC role for one repository's deploy job
   terraform-ci-roles/  OIDC plan role (pull requests) and apply role (production environment)
   cloudflare-access-app/  Cloudflare Access application, Allow policy by email, one-time PIN login
