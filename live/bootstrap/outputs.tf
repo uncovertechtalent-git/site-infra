@@ -22,3 +22,8 @@ output "log_reader_role_arn" {
   description = "role_arn of the stats job's AWS profile."
   value       = module.log_reader.role_arn
 }
+
+output "data_role_arns" {
+  description = "Per site with a data prefix: repository secret AWS_DATA_ROLE_ARN of the site repository."
+  value       = { for site, m in module.data_role : site => m.role_arn }
+}

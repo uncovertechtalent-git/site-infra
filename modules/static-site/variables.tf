@@ -75,6 +75,33 @@ variable "github_pages" {
   }
 }
 
+variable "custom_domain_ready" {
+  description = "false: serve from the CloudFront domain name only. The certificate is requested and its validation records are written, but nothing waits for validation, no alias is attached and no record points at the distribution. This is the safe first apply for a domain whose registration or delegation is not finished (the certificate cannot validate before the registry points at the zone). true: wait for the certificate, attach the hosts, point DNS (subject to attach_canonical_hosts and dns_target)."
+  type        = bool
+  default     = true
+}
+
+variable "cache_rules" {
+  description = "Cache behaviours for paths that need other caching than the default behaviour, evaluated in list order (first match wins), so put the more specific pattern first. cache_policy_id is a CloudFront cache policy id (the managed ones need no IAM permission to use). cache_control, when set, is added to the response by a response headers policy that also carries the security headers, overriding the origin's value."
+  type = list(object({
+    name            = string
+    path_pattern    = string
+    cache_policy_id = string
+    cache_control   = optional(string)
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for r in var.cache_rules : can(regex("^[a-z0-9-]+$", r.name))]) && length(distinct([for r in var.cache_rules : r.name])) == length(var.cache_rules)
+    error_message = "cache_rules names must be unique and use only a-z, 0-9 and \"-\"."
+  }
+
+  validation {
+    condition     = alltrue([for r in var.cache_rules : startswith(r.path_pattern, "/")])
+    error_message = "cache_rules path patterns must start with \"/\"."
+  }
+}
+
 variable "price_class" {
   description = "CloudFront price class."
   type        = string

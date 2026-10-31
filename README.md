@@ -1,6 +1,6 @@
 # site-infra
 
-Terraform for the static sites machinebehavior.io and tychat.io: a private S3 bucket per site behind CloudFront, certificates from ACM, DNS in Route 53, and access logs that never record an IP address. The sites moved here from GitHub Pages, which keeps no access logs, so there were no visit statistics at all.
+Terraform for the static sites machinebehavior.io, tychat.io and chaintraveler.app: a private S3 bucket per site behind CloudFront, certificates from ACM, DNS in Route 53, and access logs that never record an IP address. The sites moved here from GitHub Pages, which keeps no access logs, so there were no visit statistics at all.
 
 The repository is public on purpose: every artifact of the work is here to audit. It shows an infrastructure-as-code pipeline in which GitHub stores no cloud credential. Each job exchanges its short-lived GitHub OIDC token for a role that can do that job and nothing else. What cannot be public (the account id, the state, the log data) stays in AWS and on the operator host, and the sites show counts only.
 
@@ -19,7 +19,8 @@ The repository is public on purpose: every artifact of the work is here to audit
 |---|---|---|
 | `site-infra-terraform-plan` | pull request jobs of this repository | read the state and the tfvars, read the managed resources and IAM metadata; write nothing |
 | `site-infra-terraform-apply` | jobs in the `production` environment of this repository | write the managed buckets, CloudFront, certificates in us-east-1, records in the site zones, log delivery, and the shared and site state. No IAM action at all; no write to the bootstrap state, the tfvars or the state bucket's settings |
-| `<site>-github-deploy` | the main branch of the site repository | list and write that site's bucket, invalidate that site's distribution |
+| `<site>-github-deploy` | the main branch of the site repository, or its `production` environment when the site entry sets `deploy_environment` | list and write that site's bucket (never the prefixes in `deny_write_prefixes`), invalidate that site's distribution |
+| `<site>-github-data` | the main branch of the site repository, for a site entry with `data_prefix` | list, read, write and delete that prefix of the bucket and nothing else; cannot invalidate |
 | `site-infra-access-logs-<suffix>-reader` | the operator host's stats job | list and read the log bucket |
 
 The state bucket's own policy backs the roles up, whatever IAM allows: only the apply role and the operator write or delete state objects, and only the operator writes the bootstrap state and the tfvars.
@@ -61,8 +62,11 @@ modules/
                        function, security headers, standard logging v2, Route 53 records;
                        optional path_redirects: start-anchored prefix 301s, longest key
                        wins, after www-to-apex and before the index document
-                       (behaviour test: node modules/static-site/tests/viewer_request.test.js)
-  github-deploy-role/  OIDC role for one repository's deploy job
+                       (behaviour test: node modules/static-site/tests/viewer_request.test.js);
+                       optional cache_rules: ordered behaviours with their own cache policy and Cache-Control;
+                       custom_domain_ready = false serves from the cloudfront.net name until the domain is live
+  github-deploy-role/  OIDC role for one repository's deploy job; optional write prefix, explicit deny prefixes,
+                       read access, and no invalidation (a site with a separate data publisher gets two roles)
   terraform-ci-roles/  OIDC plan role (pull requests) and apply role (production environment)
   cloudflare-access-app/  Cloudflare Access application, Allow policy by email, one-time PIN login
   log-reader-role/     read-only role of the stats job
@@ -70,10 +74,12 @@ live/
   bootstrap/           state bucket, OIDC provider, every IAM role (operator only)
   shared/              log bucket
   machinebehavior.io/  the site, with the cutover switches
+  chaintraveler.app/   the free offline web app: shell and daily timetable data, one domain_ready switch
   cloudflare-access/   Access in front of the tunnel hostnames (operator only)
 scripts/
   tf.sh                plan and apply on the operator host (bootstrap, break-glass)
   role-boundaries.sh   IAM policy simulator checks of the roles
+  role-boundaries-site.sh  the same for the shell and data roles of one site
   plan_summary.py      counts-only plan summary
   deploy-site.sh       sync a built site to its bucket and invalidate
   parity.py            compare a host under test with the live site
@@ -82,6 +88,7 @@ scripts/
 docs/
   adr/                 decision records
   cutover-machinebehavior.io.md
+  chaintraveler.app.md  bring-up runbook of the second site, with its two publisher roles
 stats/
   cloudfront_to_loki.py  access logs -> Loki, without IP addresses or User-Agent strings
   site-traffic.*         systemd user timer that runs it every 5 minutes

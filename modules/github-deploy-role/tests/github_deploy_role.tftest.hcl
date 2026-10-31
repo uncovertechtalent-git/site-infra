@@ -79,3 +79,104 @@ run "bad_repository_is_refused" {
 
   expect_failures = [var.github_repository]
 }
+
+run "defaults_keep_the_whole_bucket_and_no_deny" {
+  command = plan
+
+  assert {
+    condition     = length(jsondecode(aws_iam_role_policy.this.policy).Statement) == 3
+    error_message = "Without the new options the policy keeps its three statements."
+  }
+
+  assert {
+    condition     = !contains(keys(jsondecode(aws_iam_role_policy.this.policy).Statement[0]), "Condition")
+    error_message = "Listing is not narrowed to a prefix by default."
+  }
+}
+
+run "shell_role_is_denied_the_data_prefix" {
+  command = plan
+
+  variables {
+    github_environment  = "production"
+    deny_write_prefixes = ["data/"]
+  }
+
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_iam_role_policy.this.policy).Statement :
+      s.Effect == "Deny" && toset(s.Action) == toset(["s3:PutObject", "s3:DeleteObject"]) && s.Resource == ["arn:aws:s3:::example-site/data/*"]
+    ])
+    error_message = "An explicit deny keeps the shell role out of data/, whatever else allows it."
+  }
+
+  assert {
+    condition     = output.token_subject == "repo:example/example.org:environment:production"
+    error_message = "The shell role is trusted by the production environment."
+  }
+}
+
+run "data_role_is_limited_to_its_prefix_and_cannot_invalidate" {
+  command = plan
+
+  variables {
+    write_prefix       = "data/"
+    allow_read         = true
+    allow_invalidation = false
+    distribution_arn   = null
+  }
+
+  assert {
+    condition = toset(flatten([
+      for s in jsondecode(aws_iam_role_policy.this.policy).Statement : s.Action
+    ])) == toset(["s3:ListBucket", "s3:PutObject", "s3:DeleteObject", "s3:GetObject"])
+    error_message = "Publish, read back, prune. No invalidation."
+  }
+
+  assert {
+    condition = toset(flatten([
+      for s in jsondecode(aws_iam_role_policy.this.policy).Statement : s.Resource
+    ])) == toset(["arn:aws:s3:::example-site", "arn:aws:s3:::example-site/data/*"])
+    error_message = "Objects only under data/; the bucket itself only to list."
+  }
+
+  assert {
+    condition     = jsondecode(aws_iam_role_policy.this.policy).Statement[0].Condition.StringLike["s3:prefix"] == ["data/*"]
+    error_message = "Listing is narrowed to data/."
+  }
+
+  assert {
+    condition     = output.token_subject == "repo:example/example.org:ref:refs/heads/main"
+    error_message = "The data role is trusted by the main branch."
+  }
+}
+
+run "invalidation_needs_a_distribution" {
+  command = plan
+
+  variables {
+    distribution_arn = null
+  }
+
+  expect_failures = [var.distribution_arn]
+}
+
+run "write_prefix_must_be_a_plain_prefix" {
+  command = plan
+
+  variables {
+    write_prefix = "/data/*"
+  }
+
+  expect_failures = [var.write_prefix]
+}
+
+run "deny_prefix_must_be_a_plain_prefix" {
+  command = plan
+
+  variables {
+    deny_write_prefixes = ["data"]
+  }
+
+  expect_failures = [var.deny_write_prefixes]
+}

@@ -283,3 +283,147 @@ run "path_redirects_reject_loops" {
 
   expect_failures = [var.path_redirects]
 }
+
+run "cache_rules_default_to_none" {
+  command = plan
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.this.ordered_cache_behavior) == 0
+    error_message = "Without cache_rules only the default behaviour exists, as before."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_response_headers_policy.rule) == 0
+    error_message = "Without cache_rules no extra response headers policy exists."
+  }
+}
+
+run "cache_rules_become_ordered_behaviours_with_their_cache_control" {
+  command = plan
+
+  variables {
+    cache_rules = [
+      { name = "latest", path_pattern = "/data/latest.json", cache_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad", cache_control = "no-cache" },
+      { name = "builds", path_pattern = "/data/????-??-??/*", cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6", cache_control = "public, max-age=31536000, immutable" },
+      { name = "plain", path_pattern = "/static/*", cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" },
+    ]
+  }
+
+  assert {
+    condition     = [for b in aws_cloudfront_distribution.this.ordered_cache_behavior : b.path_pattern] == ["/data/latest.json", "/data/????-??-??/*", "/static/*"]
+    error_message = "Behaviours keep the list order: the most specific pattern first."
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.this.ordered_cache_behavior[0].cache_policy_id == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    error_message = "latest.json uses the managed CachingDisabled policy."
+  }
+
+  assert {
+    condition = alltrue([
+      for b in aws_cloudfront_distribution.this.ordered_cache_behavior : b.viewer_protocol_policy == "redirect-to-https" && toset(b.allowed_methods) == toset(["GET", "HEAD", "OPTIONS"])
+    ])
+    error_message = "Every behaviour redirects to HTTPS and allows reads only."
+  }
+
+  assert {
+    condition     = [for i in aws_cloudfront_response_headers_policy.rule["builds"].custom_headers_config[0].items : i.value if i.header == "Cache-Control"] == ["public, max-age=31536000, immutable"]
+    error_message = "Dated builds are cached for a year, immutable."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_response_headers_policy.rule) == 2
+    error_message = "A rule without cache_control shares the default response headers policy."
+  }
+
+  assert {
+    condition     = aws_cloudfront_response_headers_policy.rule["latest"].security_headers_config[0].strict_transport_security[0].access_control_max_age_sec == 31536000
+    error_message = "A rule's policy keeps the security headers."
+  }
+}
+
+run "cache_rules_reject_a_duplicate_name" {
+  command = plan
+
+  variables {
+    cache_rules = [
+      { name = "a", path_pattern = "/a/*", cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" },
+      { name = "a", path_pattern = "/b/*", cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" },
+    ]
+  }
+
+  expect_failures = [var.cache_rules]
+}
+
+run "cache_rules_reject_a_pattern_without_a_leading_slash" {
+  command = plan
+
+  variables {
+    cache_rules = [
+      { name = "a", path_pattern = "data/*", cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" },
+    ]
+  }
+
+  expect_failures = [var.cache_rules]
+}
+
+# A new domain whose registration is not finished: the first apply must still succeed.
+run "domain_not_ready_serves_from_cloudfront_and_waits_for_nothing" {
+  command = plan
+
+  variables {
+    attach_canonical_hosts = true
+    dns_target             = "cloudfront"
+    custom_domain_ready    = false
+  }
+
+  assert {
+    condition     = length(aws_acm_certificate_validation.this) == 0
+    error_message = "Nothing waits for certificate validation while the domain is not ready."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.this.aliases) == 0
+    error_message = "No host is attached before the domain is ready."
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.this.viewer_certificate[0].cloudfront_default_certificate == true
+    error_message = "The distribution uses the CloudFront certificate until then."
+  }
+
+  assert {
+    condition     = length(aws_route53_record.canonical) == 0 && length(aws_route53_record.www) == 0 && length(aws_route53_record.test) == 0
+    error_message = "No DNS record points at the distribution before the domain is ready."
+  }
+
+  assert {
+    condition     = length(aws_route53_record.certificate_validation) == 3 && aws_acm_certificate.this.domain_name == "example.org"
+    error_message = "The certificate is requested and its validation records are written, so ACM can validate as soon as the delegation is live."
+  }
+}
+
+run "domain_ready_attaches_the_validated_certificate_and_the_hosts" {
+  command = apply
+
+  variables {
+    attach_canonical_hosts = true
+    dns_target             = "cloudfront"
+    custom_domain_ready    = true
+  }
+
+  assert {
+    condition     = length(aws_acm_certificate_validation.this) == 1
+    error_message = "The certificate validation is awaited once the domain is ready."
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.this.aliases == toset(["example.org", "www.example.org", "next.example.org"])
+    error_message = "Every host is attached."
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.this.viewer_certificate[0].ssl_support_method == "sni-only" && aws_cloudfront_distribution.this.viewer_certificate[0].minimum_protocol_version == "TLSv1.2_2021"
+    error_message = "The ACM certificate is served over SNI with TLS 1.2 or later."
+  }
+}
