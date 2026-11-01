@@ -59,7 +59,7 @@ Add the site to the `sites` map in `bootstrap.tfvars`. No `distribution_id` yet:
 ```
 
 ```bash
-scripts/tf.sh bootstrap plan      # expect: the apply role's policy updated in place, one new role chaintraveler-app-github-data with its policy
+scripts/tf.sh bootstrap plan      # expect 2 to add, 2 to change, 0 to destroy: one new role chaintraveler-app-github-data with its policy; the policies of the plan role (gains the bucket, it reads it) and of the apply role (gains the bucket and the zone) updated in place
 scripts/tf.sh bootstrap apply
 scripts/tf.sh bootstrap output    # data_role_arns: the value of AWS_DATA_ROLE_ARN in step 7
 ```
