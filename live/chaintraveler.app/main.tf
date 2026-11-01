@@ -52,6 +52,13 @@ module "site" {
 
   content_security_policy = local.content_security_policy
 
+  # The app is one origin and nothing else fetches from it: no CORS headers, so no Vary: Origin either.
+  cors_allow_all = false
+
+  # Plan B reads the device position once, when the visitor presses "Use my location", on this page only.
+  # Everything else stays off.
+  permissions_policy = "camera=(), microphone=(), geolocation=(self), payment=(), usb=()"
+
   # First match wins. The shell (everything else) takes the default behaviour: the objects carry no-cache, so a
   # browser revalidates and a deploy is visible at once (and the deploy invalidates the shell paths anyway).
   cache_rules = [

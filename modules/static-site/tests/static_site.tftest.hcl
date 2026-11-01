@@ -427,3 +427,42 @@ run "domain_ready_attaches_the_validated_certificate_and_the_hosts" {
     error_message = "The ACM certificate is served over SNI with TLS 1.2 or later."
   }
 }
+
+run "cors_headers_stay_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(aws_cloudfront_response_headers_policy.this.cors_config) == 1
+    error_message = "Sites that moved from GitHub Pages keep the CORS headers unless they opt out."
+  }
+}
+
+run "a_one_origin_site_can_drop_cors_and_with_it_vary_origin" {
+  command = plan
+
+  variables {
+    cors_allow_all = false
+    cache_rules = [
+      { name = "builds", path_pattern = "/data/????-??-??/*", cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6", cache_control = "public, max-age=31536000, immutable" },
+    ]
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_response_headers_policy.this.cors_config) == 0
+    error_message = "The default headers policy has no CORS config."
+  }
+
+  assert {
+    condition     = alltrue([for p in aws_cloudfront_response_headers_policy.rule : length(p.cors_config) == 0])
+    error_message = "A cache rule's headers policy has no CORS config either."
+  }
+}
+
+run "geolocation_is_off_unless_a_site_turns_it_on" {
+  command = plan
+
+  assert {
+    condition     = strcontains(one(aws_cloudfront_response_headers_policy.this.custom_headers_config[0].items).value, "geolocation=()")
+    error_message = "The default Permissions-Policy turns geolocation off."
+  }
+}

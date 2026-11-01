@@ -75,22 +75,27 @@ resource "aws_cloudfront_response_headers_policy" "this" {
   comment = "Security headers for ${var.canonical_host}"
 
   # GitHub Pages answers every request with Access-Control-Allow-Origin: *.
-  # CloudFront adds it to cross-origin requests, the ones that need it.
-  cors_config {
-    access_control_allow_credentials = false
-    access_control_max_age_sec       = 600
-    origin_override                  = true
+  # CloudFront adds it to cross-origin requests, the ones that need it. It also adds Vary: Origin to every
+  # response, which a site that is one origin does not need (var.cors_allow_all = false drops both).
+  dynamic "cors_config" {
+    for_each = var.cors_allow_all ? [1] : []
 
-    access_control_allow_headers {
-      items = ["*"]
-    }
+    content {
+      access_control_allow_credentials = false
+      access_control_max_age_sec       = 600
+      origin_override                  = true
 
-    access_control_allow_methods {
-      items = ["GET", "HEAD", "OPTIONS"]
-    }
+      access_control_allow_headers {
+        items = ["*"]
+      }
 
-    access_control_allow_origins {
-      items = ["*"]
+      access_control_allow_methods {
+        items = ["GET", "HEAD", "OPTIONS"]
+      }
+
+      access_control_allow_origins {
+        items = ["*"]
+      }
     }
   }
 
@@ -143,21 +148,25 @@ resource "aws_cloudfront_response_headers_policy" "rule" {
   name    = "${local.name}-${each.key}-headers"
   comment = "Security headers and Cache-Control for ${each.value.path_pattern} on ${var.canonical_host}"
 
-  cors_config {
-    access_control_allow_credentials = false
-    access_control_max_age_sec       = 600
-    origin_override                  = true
+  dynamic "cors_config" {
+    for_each = var.cors_allow_all ? [1] : []
 
-    access_control_allow_headers {
-      items = ["*"]
-    }
+    content {
+      access_control_allow_credentials = false
+      access_control_max_age_sec       = 600
+      origin_override                  = true
 
-    access_control_allow_methods {
-      items = ["GET", "HEAD", "OPTIONS"]
-    }
+      access_control_allow_headers {
+        items = ["*"]
+      }
 
-    access_control_allow_origins {
-      items = ["*"]
+      access_control_allow_methods {
+        items = ["GET", "HEAD", "OPTIONS"]
+      }
+
+      access_control_allow_origins {
+        items = ["*"]
+      }
     }
   }
 
