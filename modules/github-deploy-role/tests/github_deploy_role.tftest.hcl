@@ -185,9 +185,9 @@ run "signing_adds_three_kms_actions_on_one_key_and_nothing_else" {
   command = plan
 
   variables {
-    write_prefix  = "data/"
-    allow_read    = true
-    sign_key_arn  = "arn:aws:kms:eu-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    write_prefix = "data/"
+    allow_read   = true
+    sign_key_arn = "arn:aws:kms:eu-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
   }
 
   assert {
