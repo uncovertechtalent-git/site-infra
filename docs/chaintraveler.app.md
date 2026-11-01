@@ -162,7 +162,8 @@ In the order that keeps every step harmless on its own:
 1. In the operator's `bootstrap.tfvars` set `sign_manifest = true` on the chaintraveler.app site entry. Plan, show it,
    apply, push-vars (after the apply, as in step 3). The plan adds one key, one alias, one statement on the data role.
    Run `scripts/role-boundaries-site.sh chaintraveler.app <bucket> <distribution id> "" <key arn>` (the key ARN is the output
-   `manifest_signing_key_arns`): every line `ok`.
+   `manifest_signing_key_arns`): every line `ok`. Those lines prove the data role's IAM scope; the key policy's deny of
+   `kms:Sign` to every other principal is not read by the policy simulator, and is held by the module's `terraform test`.
 2. Set the repository secret `SIGNING_KEY_ARN` of the app repository to the key ARN and run the Timetable workflow by hand:
    the pointer now has `kid` and `sig`. An app that holds no public key ignores both fields, so nothing changes on a device
    yet. Check: `curl -s https://chaintraveler.app/data/latest.json | python3 -m json.tool` shows both fields.
