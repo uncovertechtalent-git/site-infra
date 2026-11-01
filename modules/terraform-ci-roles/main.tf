@@ -149,7 +149,7 @@ locals {
           "cloudfront:DeleteResponseHeadersPolicy",
           "cloudfront:TagResource",
           "cloudfront:UntagResource",
-          "cloudfront:AllowVendedLogsDeliveryForResource",
+          "cloudfront:AllowVendedLogDeliveryForResource",
         ]
         Resource = "*"
       },
