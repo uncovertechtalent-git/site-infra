@@ -60,6 +60,15 @@ module "deploy_role" {
   distribution_arn     = "arn:${local.partition}:cloudfront::${var.aws_account_id}:distribution/${each.value.distribution_id}"
 }
 
+# The key that signs the timetable manifest of a site that asks for it, and only the data role may use it.
+module "manifest_key" {
+  source   = "../../modules/manifest-signing-key"
+  for_each = { for site, s in var.sites : site => s if s.sign_manifest }
+
+  alias_name  = "${replace(each.key, ".", "-")}-manifest-signing"
+  description = "Signs the timetable manifest (data/latest.json) of ${each.key}"
+}
+
 # The second publisher of a site whose data is built on a schedule: main branch, one prefix, no invalidation.
 # It exists as soon as the bucket name is known; it needs no distribution.
 module "data_role" {
@@ -75,6 +84,7 @@ module "data_role" {
   write_prefix         = each.value.data_prefix
   allow_read           = true
   allow_invalidation   = false
+  sign_key_arn         = try(module.manifest_key[each.key].key_arn, null)
 }
 
 module "log_reader" {

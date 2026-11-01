@@ -102,6 +102,12 @@ variable "allow_read" {
   default     = false
 }
 
+variable "sign_key_arn" {
+  description = "ARN of the one KMS key (module manifest-signing-key) the role may sign and verify with, and read the public key of. Null: no KMS access at all."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Tags for the role, on top of the provider default tags."
   type        = map(string)

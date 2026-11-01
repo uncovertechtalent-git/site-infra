@@ -73,6 +73,16 @@ locals {
         Resource = [for p in var.deny_write_prefixes : "${var.bucket_arn}/${p}*"]
       },
     ],
+    var.sign_key_arn == null ? [] : [
+      {
+        # Sign the manifest and have KMS check the signature before the pointer moves; read the public key to name the
+        # key. Nothing that changes, disables or deletes the key: those are the operator's.
+        Sid      = "SignManifest"
+        Effect   = "Allow"
+        Action   = ["kms:Sign", "kms:Verify", "kms:GetPublicKey"]
+        Resource = var.sign_key_arn
+      },
+    ],
     var.allow_invalidation ? [
       {
         Sid      = "InvalidateCache"

@@ -173,3 +173,22 @@ run "plan_role_can_find_buckets" {
     error_message = "The plan role may list (HeadBucket) the managed buckets; without it a plan re-creates them."
   }
 }
+
+run "the_plan_role_reads_kms_keys_and_cannot_use_them" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for a in flatten([for s in jsondecode(aws_iam_role_policy.plan.policy).Statement : s.Action]) :
+      !startswith(a, "kms:") || contains(["kms:DescribeKey", "kms:GetKeyPolicy", "kms:GetKeyRotationStatus", "kms:ListAliases", "kms:ListResourceTags"], a)
+    ])
+    error_message = "The plan role reads a KMS key to refresh the plan; it has no kms:Sign, kms:Decrypt or kms:GetPublicKey."
+  }
+
+  assert {
+    condition = !anytrue([
+      for a in flatten([for s in jsondecode(aws_iam_role_policy.apply.policy).Statement : s.Action]) : startswith(a, "kms:")
+    ])
+    error_message = "The apply role has no KMS permission: keys are the operator's, like IAM."
+  }
+}

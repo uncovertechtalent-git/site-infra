@@ -180,3 +180,45 @@ run "deny_prefix_must_be_a_plain_prefix" {
 
   expect_failures = [var.deny_write_prefixes]
 }
+
+run "signing_adds_three_kms_actions_on_one_key_and_nothing_else" {
+  command = plan
+
+  variables {
+    write_prefix = "data/"
+    allow_read   = true
+    sign_key_arn = "arn:aws:kms:eu-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+  }
+
+  assert {
+    condition = toset([
+      for s in jsondecode(aws_iam_role_policy.this.policy).Statement : s.Action if s.Sid == "SignManifest"
+    ][0]) == toset(["kms:Sign", "kms:Verify", "kms:GetPublicKey"])
+    error_message = "Sign, verify and read the public key, nothing that changes or deletes the key."
+  }
+
+  assert {
+    condition = [
+      for s in jsondecode(aws_iam_role_policy.this.policy).Statement : s.Resource if s.Sid == "SignManifest"
+    ][0] == "arn:aws:kms:eu-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    error_message = "One key, no wildcard."
+  }
+
+  assert {
+    condition = !anytrue([
+      for s in jsondecode(aws_iam_role_policy.this.policy).Statement : anytrue([for a in flatten([s.Action]) : startswith(a, "kms:") && !contains(["kms:Sign", "kms:Verify", "kms:GetPublicKey"], a)])
+    ])
+    error_message = "No other KMS action."
+  }
+}
+
+run "no_signing_key_no_kms_access" {
+  command = plan
+
+  assert {
+    condition = !anytrue([
+      for s in jsondecode(aws_iam_role_policy.this.policy).Statement : anytrue([for a in flatten([s.Action]) : startswith(a, "kms:")])
+    ])
+    error_message = "A role without a signing key has no KMS permission."
+  }
+}
