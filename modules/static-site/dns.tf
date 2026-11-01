@@ -9,7 +9,7 @@
 # import blocks in the root stack).
 
 resource "aws_route53_record" "test" {
-  for_each = var.test_host == null ? toset([]) : toset(["A", "AAAA"])
+  for_each = var.test_host == null || !var.custom_domain_ready ? toset([]) : toset(["A", "AAAA"])
 
   zone_id = var.zone_id
   name    = var.test_host
@@ -23,7 +23,7 @@ resource "aws_route53_record" "test" {
 }
 
 resource "aws_route53_record" "canonical" {
-  for_each = toset(["A", "AAAA"])
+  for_each = var.custom_domain_ready ? toset(["A", "AAAA"]) : toset([])
 
   zone_id = var.zone_id
   name    = var.canonical_host
@@ -43,7 +43,7 @@ resource "aws_route53_record" "canonical" {
 }
 
 resource "aws_route53_record" "www" {
-  count = var.www_host == null ? 0 : 1
+  count = var.www_host == null || !var.custom_domain_ready ? 0 : 1
 
   zone_id = var.zone_id
   name    = var.www_host

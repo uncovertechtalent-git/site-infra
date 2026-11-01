@@ -35,11 +35,19 @@ resource "aws_route53_record" "certificate_validation" {
   allow_overwrite = true
 }
 
+# Waits until ACM has validated the certificate through the DNS records above. That needs the registry to
+# delegate the domain to the zone, so it is skipped while custom_domain_ready is false.
 resource "aws_acm_certificate_validation" "this" {
+  count  = var.custom_domain_ready ? 1 : 0
   region = "us-east-1"
 
   certificate_arn         = aws_acm_certificate.this.arn
   validation_record_fqdns = [for r in aws_route53_record.certificate_validation : r.fqdn]
+}
+
+moved {
+  from = aws_acm_certificate_validation.this
+  to   = aws_acm_certificate_validation.this[0]
 }
 
 resource "aws_cloudfront_origin_access_control" "this" {
@@ -127,6 +135,79 @@ resource "aws_cloudfront_response_headers_policy" "this" {
   }
 }
 
+# One policy per cache rule that sets Cache-Control. A behaviour takes exactly one response headers policy, so each
+# of these repeats the security headers of the default policy above; keep the two in step.
+resource "aws_cloudfront_response_headers_policy" "rule" {
+  for_each = { for r in var.cache_rules : r.name => r if r.cache_control != null }
+
+  name    = "${local.name}-${each.key}-headers"
+  comment = "Security headers and Cache-Control for ${each.value.path_pattern} on ${var.canonical_host}"
+
+  cors_config {
+    access_control_allow_credentials = false
+    access_control_max_age_sec       = 600
+    origin_override                  = true
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = ["GET", "HEAD", "OPTIONS"]
+    }
+
+    access_control_allow_origins {
+      items = ["*"]
+    }
+  }
+
+  security_headers_config {
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "SAMEORIGIN"
+      override     = true
+    }
+
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+
+    strict_transport_security {
+      access_control_max_age_sec = var.hsts_max_age_seconds
+      include_subdomains         = true
+      preload                    = false
+      override                   = true
+    }
+
+    dynamic "content_security_policy" {
+      for_each = var.content_security_policy == null ? [] : [var.content_security_policy]
+
+      content {
+        content_security_policy = content_security_policy.value
+        override                = true
+      }
+    }
+  }
+
+  custom_headers_config {
+    items {
+      header   = "Permissions-Policy"
+      value    = var.permissions_policy
+      override = true
+    }
+
+    items {
+      header   = "Cache-Control"
+      value    = each.value.cache_control
+      override = true
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   comment             = var.canonical_host
@@ -157,6 +238,28 @@ resource "aws_cloudfront_distribution" "this" {
     }
   }
 
+  # Paths with their own caching (var.cache_rules), in list order, before the default behaviour applies.
+  dynamic "ordered_cache_behavior" {
+    for_each = var.cache_rules
+
+    content {
+      path_pattern           = ordered_cache_behavior.value.path_pattern
+      target_origin_id       = "site-bucket"
+      viewer_protocol_policy = "redirect-to-https"
+      allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+      cached_methods         = ["GET", "HEAD"]
+      compress               = true
+      cache_policy_id        = ordered_cache_behavior.value.cache_policy_id
+      response_headers_policy_id = (ordered_cache_behavior.value.cache_control == null ?
+      aws_cloudfront_response_headers_policy.this.id : aws_cloudfront_response_headers_policy.rule[ordered_cache_behavior.value.name].id)
+
+      function_association {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.viewer_request.arn
+      }
+    }
+  }
+
   # OAC has no s3:ListBucket, so S3 answers a missing key with 403. Both serve the site's 404 page.
   custom_error_response {
     error_code            = 403
@@ -178,10 +281,14 @@ resource "aws_cloudfront_distribution" "this" {
     }
   }
 
+  # With custom_domain_ready = false the distribution answers on its cloudfront.net name with the CloudFront
+  # certificate (which fixes the minimum TLS version at the CloudFront default); the validated ACM certificate and
+  # the aliases follow when the domain is ready.
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate_validation.this.certificate_arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
+    cloudfront_default_certificate = var.custom_domain_ready ? null : true
+    acm_certificate_arn            = var.custom_domain_ready ? aws_acm_certificate_validation.this[0].certificate_arn : null
+    ssl_support_method             = var.custom_domain_ready ? "sni-only" : null
+    minimum_protocol_version       = var.custom_domain_ready ? "TLSv1.2_2021" : null
   }
 
   tags = var.tags

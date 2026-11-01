@@ -58,8 +58,48 @@ variable "bucket_arn" {
 }
 
 variable "distribution_arn" {
-  description = "ARN of the CloudFront distribution the role may invalidate."
+  description = "ARN of the CloudFront distribution the role may invalidate. Null when allow_invalidation is false."
   type        = string
+  default     = null
+
+  validation {
+    condition     = !var.allow_invalidation || var.distribution_arn != null
+    error_message = "distribution_arn is required while allow_invalidation is true."
+  }
+}
+
+variable "allow_invalidation" {
+  description = "Whether the role may create invalidations on distribution_arn. A role that only publishes data under immutable paths needs none."
+  type        = bool
+  default     = true
+}
+
+variable "write_prefix" {
+  description = "Key prefix the role may list, write and delete, for example \"data/\". Empty: the whole bucket."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.write_prefix == "" || (endswith(var.write_prefix, "/") && !startswith(var.write_prefix, "/") && !strcontains(var.write_prefix, "*"))
+    error_message = "write_prefix is empty or a key prefix that ends in \"/\", has no leading \"/\" and no wildcard."
+  }
+}
+
+variable "deny_write_prefixes" {
+  description = "Key prefixes the role may never write or delete, whatever else allows it (an explicit deny), for example [\"data/\"] for a role that publishes the site shell next to data published by another role."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for p in var.deny_write_prefixes : endswith(p, "/") && !startswith(p, "/") && !strcontains(p, "*")])
+    error_message = "Each deny_write_prefixes entry ends in \"/\", has no leading \"/\" and no wildcard."
+  }
+}
+
+variable "allow_read" {
+  description = "Whether the role may read objects under write_prefix (s3:GetObject). A role that verifies what it published, or rolls a pointer back, needs it."
+  type        = bool
+  default     = false
 }
 
 variable "tags" {

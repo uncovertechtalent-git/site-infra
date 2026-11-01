@@ -69,14 +69,28 @@ variable "log_reader_principal_arns" {
 }
 
 variable "sites" {
-  description = "One entry per site, keyed by its canonical host: the site repository and its numeric owner and repository ids (GitHub's immutable OIDC subject), its bucket and zone, and its distribution once the site stack created it (null until then: no deploy role yet)."
+  description = <<-EOT
+    One entry per site, keyed by its canonical host: the site repository and its numeric owner and repository ids
+    (GitHub's immutable OIDC subject), its bucket and zone, and its distribution once the site stack created it
+    (null until then: no deploy role yet).
+
+    Optional, for a site whose shell and data have different publishers:
+    - deploy_environment: the deploy role trusts this GitHub environment of the repository (for example
+      "production", which needs a reviewer) instead of the main branch.
+    - deny_write_prefixes: key prefixes the deploy role may never write (for example ["data/"]).
+    - data_prefix: a second role, "<site>-github-data", that trusts the main branch (so a scheduled job needs no
+      approval), may read, write and delete only under this prefix (for example "data/") and cannot invalidate.
+  EOT
   type = map(object({
-    repository      = string
-    owner_id        = number
-    repository_id   = number
-    bucket_name     = string
-    zone_id         = string
-    distribution_id = optional(string)
+    repository          = string
+    owner_id            = number
+    repository_id       = number
+    bucket_name         = string
+    zone_id             = string
+    distribution_id     = optional(string)
+    deploy_environment  = optional(string)
+    deny_write_prefixes = optional(list(string), [])
+    data_prefix         = optional(string)
   }))
   default = {}
 }

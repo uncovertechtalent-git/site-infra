@@ -8,7 +8,8 @@
 # - the IAM OIDC provider for GitHub Actions
 # - the plan role (pull requests, read-only) and the apply role (production
 #   environment) for this repository's Terraform workflow
-# - one deploy role per site, for the content deploy of the site repository
+# - one deploy role per site, for the content deploy of the site repository, and a data role for a site
+#   whose data a scheduled job publishes under its own prefix
 # - the read-only role of the stats job that reads the access logs
 
 data "aws_partition" "current" {}
@@ -53,8 +54,27 @@ module "deploy_role" {
   github_repository    = each.value.repository
   github_owner_id      = each.value.owner_id
   github_repository_id = each.value.repository_id
+  github_environment   = each.value.deploy_environment
+  deny_write_prefixes  = each.value.deny_write_prefixes
   bucket_arn           = "arn:${local.partition}:s3:::${each.value.bucket_name}"
   distribution_arn     = "arn:${local.partition}:cloudfront::${var.aws_account_id}:distribution/${each.value.distribution_id}"
+}
+
+# The second publisher of a site whose data is built on a schedule: main branch, one prefix, no invalidation.
+# It exists as soon as the bucket name is known; it needs no distribution.
+module "data_role" {
+  source   = "../../modules/github-deploy-role"
+  for_each = { for site, s in var.sites : site => s if s.data_prefix != null }
+
+  role_name            = "${replace(each.key, ".", "-")}-github-data"
+  oidc_provider_arn    = aws_iam_openid_connect_provider.github.arn
+  github_repository    = each.value.repository
+  github_owner_id      = each.value.owner_id
+  github_repository_id = each.value.repository_id
+  bucket_arn           = "arn:${local.partition}:s3:::${each.value.bucket_name}"
+  write_prefix         = each.value.data_prefix
+  allow_read           = true
+  allow_invalidation   = false
 }
 
 module "log_reader" {
