@@ -61,6 +61,7 @@ Add the site to the `sites` map in `bootstrap.tfvars`. No `distribution_id` yet:
 ```bash
 scripts/tf.sh bootstrap plan      # expect 2 to add, 2 to change, 0 to destroy: one new role chaintraveler-app-github-data with its policy; the policies of the plan role (gains the bucket, it reads it) and of the apply role (gains the bucket and the zone) updated in place
 scripts/tf.sh bootstrap apply
+scripts/tf.sh bootstrap push-vars # CI plans bootstrap with the copy in the state bucket; without this its plan wants to destroy what was just applied
 scripts/tf.sh bootstrap output    # data_role_arns: the value of AWS_DATA_ROLE_ARN in step 7
 ```
 
@@ -91,6 +92,7 @@ Add `distribution_id = "<output>"` to the site entry in `bootstrap.tfvars`.
 ```bash
 scripts/tf.sh bootstrap plan      # expect: one new role chaintraveler-app-github-deploy with its policy
 scripts/tf.sh bootstrap apply
+scripts/tf.sh bootstrap push-vars # again: the distribution id is part of the file CI plans with
 scripts/tf.sh bootstrap output    # deploy_role_arns: the value of AWS_DEPLOY_ROLE_ARN in step 7
 scripts/role-boundaries-site.sh chaintraveler.app <bucket> <distribution id>    # every line must say ok
 ```
