@@ -131,7 +131,7 @@ aws route53 list-resource-record-sets --hosted-zone-id <zone> --query "ResourceR
 dig +short NS chaintraveler.app @8.8.8.8 | sort | diff - /tmp/zone-ns && echo "delegation is live"
 ```
 
-If the registration is still `IN_PROGRESS`, or the diff shows a difference, stay at `domain_ready = false`: the app works on the CloudFront name and nothing else is affected. When both checks pass, set `domain_ready = true` in `chaintraveler.app.tfvars`, `scripts/tf.sh chaintraveler.app push-vars`, then plan and apply.
+If the registration is still `IN_PROGRESS`, or the diff shows a difference, stay at `domain_ready = false`: the app works on the CloudFront name and nothing else is affected. When both checks pass, set `domain_ready = true` in `chaintraveler.app.tfvars`, plan and apply with `scripts/tf.sh`, and only after the apply run `scripts/tf.sh chaintraveler.app push-vars`. Pushing first would let a CI Apply that is waiting, or starts in between, apply the flip without a reviewed plan: CI reads the stack's variables from the state bucket when the job runs. The same goes for the rollback below.
 
 Expected plan: 1 to change, 4 to create: the distribution updated in place (aliases `chaintraveler.app` and `www.chaintraveler.app`, the validated ACM certificate instead of the CloudFront one), `aws_acm_certificate_validation.this[0]` created, and three records (apex A and AAAA aliases, www CNAME). The validation resource waits for ACM, usually a few minutes; if the delegation is not live it fails after its timeout and leaves everything it created, and the next apply continues.
 
@@ -142,11 +142,13 @@ curl -s  https://chaintraveler.app/data/latest.json | python3 -m json.tool
 echo | openssl s_client -connect chaintraveler.app:443 -servername chaintraveler.app 2>/dev/null | openssl x509 -noout -issuer -dates
 ```
 
+A resolver that looked the name up before the records existed may keep the miss for the zone's negative TTL. If `dig +short A chaintraveler.app @8.8.8.8` answers and yours does not, the stack is fine: test with `curl --resolve chaintraveler.app:443:<address from dig> https://chaintraveler.app/` until the cache expires.
+
 ## Rollback
 
 | What | How |
 |---|---|
-| The domain attachment | `domain_ready = false`, push-vars, apply: the aliases and the three records go, the app stays reachable on the CloudFront name. |
+| The domain attachment | `domain_ready = false` in the local tfvars, plan, apply, then push-vars: the aliases and the three records go, the app stays reachable on the CloudFront name. |
 | A bad timetable | Run the **Timetable** workflow by hand with `rollback_to` set to a kept build (`YYYY-MM-DD`); the app follows the pointer at its next online launch. The last three builds are kept. |
 | A bad shell | Revert the commit in the app repository and approve the deploy; the previous files are also kept as object versions for 30 days. |
 | The infrastructure | Revert this pull request's commit; the bucket is not empty, so destroying it needs `force_destroy` by hand, on purpose. |
