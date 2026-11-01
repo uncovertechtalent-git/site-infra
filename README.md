@@ -17,13 +17,13 @@ The repository is public on purpose: every artifact of the work is here to audit
 
 | Role | Trusted by | May |
 |---|---|---|
-| `site-infra-terraform-plan` | pull request jobs of this repository | read the state and the tfvars, read the managed resources and IAM metadata; write nothing |
+| `site-infra-terraform-plan` | pull request jobs of this repository | read the state and the tfvars, read the managed resources and IAM metadata, and read the signing key (`kms:DescribeKey`, `kms:GetKeyPolicy`, `kms:GetKeyRotationStatus`, `kms:ListAliases`, `kms:ListResourceTags`: it cannot use a key); write nothing |
 | `site-infra-terraform-apply` | jobs in the `production` environment of this repository | write the managed buckets, CloudFront, certificates in us-east-1, records in the site zones, log delivery, and the shared and site state. No IAM action at all; no write to the bootstrap state, the tfvars or the state bucket's settings |
 | `<site>-github-deploy` | the main branch of the site repository, or its `production` environment when the site entry sets `deploy_environment` | list and write that site's bucket (never the prefixes in `deny_write_prefixes`), invalidate that site's distribution |
-| `<site>-github-data` | the main branch of the site repository, for a site entry with `data_prefix` | list, read, write and delete that prefix of the bucket and nothing else; cannot invalidate |
+| `<site>-github-data` | the main branch of the site repository, for a site entry with `data_prefix` | list, read, write and delete that prefix of the bucket; for a site entry with `sign_manifest`, also `kms:Sign`, `kms:Verify` and `kms:GetPublicKey` on that site's one signing key; nothing else; cannot invalidate |
 | `site-infra-access-logs-<suffix>-reader` | the operator host's stats job | list and read the log bucket |
 
-The state bucket's own policy backs the roles up, whatever IAM allows: only the apply role and the operator write or delete state objects, and only the operator writes the bootstrap state and the tfvars.
+The state bucket's own policy backs the roles up, whatever IAM allows: only the apply role and the operator write or delete state objects, and only the operator writes the bootstrap state and the tfvars. The signing key's own policy does the same for signing: the account root keeps `kms:*`, and every principal except the site's data role is denied `kms:Sign`, whatever IAM allows. It does not stop an account administrator from changing the key policy; it makes a stray IAM grant useless.
 
 All IAM lives in the bootstrap stack. The apply role cannot create, change or attach a role or policy, so nothing that CI runs can widen its own access. `scripts/role-boundaries.sh` checks 16 of these limits with the IAM policy simulator after each bootstrap apply.
 
