@@ -80,6 +80,9 @@ variable "sites" {
     - deny_write_prefixes: key prefixes the deploy role may never write (for example ["data/"]).
     - data_prefix: a second role, "<site>-github-data", that trusts the main branch (so a scheduled job needs no
       approval), may read, write and delete only under this prefix (for example "data/") and cannot invalidate.
+    - sign_manifest: needs data_prefix. Creates an asymmetric KMS key that signs the site's timetable manifest and
+      lets the data role (and only it) sign, verify and read the public key. Asymmetric keys do not rotate by
+      themselves: to rotate, set it for a second key name by hand (README of the app, "Signed manifest").
   EOT
   type = map(object({
     repository          = string
@@ -91,6 +94,12 @@ variable "sites" {
     deploy_environment  = optional(string)
     deny_write_prefixes = optional(list(string), [])
     data_prefix         = optional(string)
+    sign_manifest       = optional(bool, false)
   }))
   default = {}
+
+  validation {
+    condition     = alltrue([for s in values(var.sites) : !s.sign_manifest || s.data_prefix != null])
+    error_message = "sign_manifest needs data_prefix: the data role is the one that signs."
+  }
 }

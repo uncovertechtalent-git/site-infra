@@ -74,6 +74,12 @@ locals {
           "logs:ListTagsForResource",
           "iam:Get*",
           "iam:List*",
+          # Refresh the manifest signing key and its alias. Read only: the plan role cannot use a key to sign.
+          "kms:DescribeKey",
+          "kms:GetKeyPolicy",
+          "kms:GetKeyRotationStatus",
+          "kms:ListAliases",
+          "kms:ListResourceTags",
         ]
         Resource = "*"
       },

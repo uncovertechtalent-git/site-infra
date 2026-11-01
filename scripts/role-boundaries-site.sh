@@ -4,16 +4,18 @@
 # the roles that module "data_role" and the deploy role with deny_write_prefixes create. Run it after the
 # bootstrap apply that creates them. The script exits 1 on the first surprise.
 #
-# Usage: scripts/role-boundaries-site.sh <site key, e.g. chaintraveler.app> <bucket> <distribution id> [bootstrap.tfvars]
+# Usage: scripts/role-boundaries-site.sh <site key, e.g. chaintraveler.app> <bucket> <distribution id> [bootstrap.tfvars] [signing key arn]
+# With the signing key ARN (output manifest_signing_key_arns of the bootstrap stack) it also checks the KMS boundary.
 # The bucket and the distribution id are private (they come from the stack's tfvars and outputs); they are not printed.
 set -euo pipefail
 
 if [ "$#" -lt 3 ]; then
-  echo "usage: $0 <site key> <bucket> <distribution id> [path to bootstrap.tfvars]" >&2
+  echo "usage: $0 <site key> <bucket> <distribution id> [path to bootstrap.tfvars] [signing key arn]" >&2
   exit 2
 fi
 site="$1" bucket="$2" distribution="$3"
 vars="${4:-${SITE_INFRA_CONFIG:-$HOME/.config/site-infra}/bootstrap.tfvars}"
+signing_key="${5:-}"
 account="$(sed -n 's/^ *aws_account_id *= *"\(.*\)"/\1/p' "$vars" | head -n 1)"
 [ -n "$account" ] || { echo "no aws_account_id in $vars" >&2; exit 2; }
 
@@ -52,4 +54,17 @@ expect deny  "$data_role"  s3:DeleteObject            "$b/index.html"           
 expect deny  "$data_role"  cloudfront:CreateInvalidation "$d"                       "the data role cannot invalidate"
 expect deny  "$data_role"  s3:PutBucketPolicy         "$b"                          "the data role changes no bucket setting"
 expect deny  "$data_role"  s3:PutObject               "arn:aws:s3:::other-bucket/data/latest.json" "the data role writes no other bucket"
+
+if [ -n "$signing_key" ]; then
+  other_key="${signing_key%/*}/00000000-0000-0000-0000-000000000000"
+  expect allow "$data_role"  kms:Sign                   "$signing_key"                "the data role signs the manifest"
+  expect allow "$data_role"  kms:Verify                 "$signing_key"                "the data role has KMS check the signature"
+  expect allow "$data_role"  kms:GetPublicKey           "$signing_key"                "the data role reads the public key"
+  expect deny  "$data_role"  kms:Sign                   "$other_key"                  "the data role signs with no other key"
+  expect deny  "$data_role"  kms:ScheduleKeyDeletion    "$signing_key"                "the data role cannot delete the key"
+  expect deny  "$data_role"  kms:DisableKey             "$signing_key"                "the data role cannot disable the key"
+  expect deny  "$data_role"  kms:PutKeyPolicy           "$signing_key"                "the data role cannot change who may use the key"
+  expect deny  "$data_role"  kms:CreateGrant            "$signing_key"                "the data role cannot hand the key to anyone"
+  expect deny  "$shell_role" kms:Sign                   "$signing_key"                "the shell role never signs"
+fi
 exit "$failed"

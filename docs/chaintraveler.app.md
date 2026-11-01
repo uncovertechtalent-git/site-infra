@@ -144,6 +144,42 @@ echo | openssl s_client -connect chaintraveler.app:443 -servername chaintraveler
 
 A resolver that looked the name up before the records existed may keep the miss for the zone's negative TTL. If `dig +short A chaintraveler.app @8.8.8.8` answers and yours does not, the stack is fine: test with `curl --resolve chaintraveler.app:443:<address from dig> https://chaintraveler.app/` until the cache expires.
 
+## 9. The manifest signing key (optional, after step 8)
+
+The timetable pointer `data/latest.json` can carry a signature so that the app accepts a timetable only from the one
+publisher that can use a private key that never leaves KMS (chain-traveler README, "Signed manifest"). What the key is
+and what it protects:
+
+- an asymmetric ECDSA P-256 KMS key, alias `chaintraveler-app-manifest-signing`, made in the **bootstrap** stack (so the
+  operator applies it, like every IAM change);
+- only the data role may sign, verify and read the public key (`kms:Sign`, `kms:Verify`, `kms:GetPublicKey` on that one key);
+  the shell role, the CI roles and this repository's apply role cannot sign; the plan role can read the key's settings and nothing more;
+- it protects against a leaked data role's S3 rights, a bucket-policy mistake and a CDN-level compromise. It does not
+  protect against a compromised `main` branch of the app repository, whose workflow the data role trusts.
+
+In the order that keeps every step harmless on its own:
+
+1. In the operator's `bootstrap.tfvars` set `sign_manifest = true` on the chaintraveler.app site entry. Plan, show it,
+   apply, push-vars (after the apply, as in step 3). The plan adds one key, one alias, one statement on the data role.
+   Run `scripts/role-boundaries-site.sh chaintraveler.app <bucket> <distribution id> "" <key arn>` (the key ARN is the output
+   `manifest_signing_key_arns`): every line `ok`.
+2. Read the public key and its id, then put both into the app (`app/keys.js`) and release the shell:
+   ```sh
+   pub=$(aws kms get-public-key --key-id alias/chaintraveler-app-manifest-signing --query PublicKey --output text)
+   python3 build/manifest.py kid-of "$pub"
+   ```
+   An app with a key refuses a manifest that is not signed, so the shell must not ship the key before step 3 can follow
+   within the day: a device that updates the shell and then finds an unsigned manifest keeps its old timetable and says so.
+3. Set the repository secret `SIGNING_KEY_ARN` of the app repository to the key ARN and run the Timetable workflow by hand:
+   the pointer now has `kid` and `sig`.
+4. Check: `curl -s https://chaintraveler.app/data/latest.json | python3 -m json.tool` shows both fields; open the app online:
+   "Updated just now." or "Up to date.", no `signature` in the data-age line.
+
+To rotate, make a second key by hand under another alias, list both public keys in `app/keys.js`, release, switch
+`SIGNING_KEY_ARN`, and remove the old key a release later. To switch signing off, remove `SIGNING_KEY_ARN` (the manifest
+is unsigned again) and, before that reaches devices, remove the keys from `app/keys.js`: an app that holds a key refuses
+an unsigned manifest.
+
 ## Rollback
 
 | What | How |
