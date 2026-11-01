@@ -131,6 +131,12 @@ variable "content_security_policy" {
   default     = null
 }
 
+variable "cors_allow_all" {
+  description = "Answer cross-origin requests with Access-Control-Allow-Origin: * (what GitHub Pages did, so a site that moved from it keeps working for other origins). It also puts Vary: Origin on every response. Set false for a site that is one origin."
+  type        = bool
+  default     = true
+}
+
 variable "permissions_policy" {
   description = "Permissions-Policy header value."
   type        = string
