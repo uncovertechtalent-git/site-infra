@@ -140,6 +140,28 @@ run "apply_role_writes_only_the_managed_buckets_and_zones" {
   }
 }
 
+run "apply_role_can_set_up_cloudfront_log_delivery" {
+  command = plan
+
+  # The action is spelled AllowVendedLogDeliveryForResource (singular "Log"). A misspelling is accepted by IAM and
+  # only fails when a site's log delivery is created for the first time.
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_iam_role_policy.apply.policy).Statement :
+      s.Effect == "Allow" && contains(flatten([s.Action]), "cloudfront:AllowVendedLogDeliveryForResource")
+    ])
+    error_message = "The apply role may let CloudFront deliver logs for a distribution it creates."
+  }
+
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_iam_role_policy.apply.policy).Statement :
+      s.Effect == "Allow" && alltrue([for a in ["logs:PutDeliverySource", "logs:PutDeliveryDestination", "logs:CreateDelivery"] : contains(flatten([s.Action]), a)])
+    ])
+    error_message = "The apply role may create the log delivery source, destination and delivery."
+  }
+}
+
 run "plan_role_can_find_buckets" {
   command = plan
 
