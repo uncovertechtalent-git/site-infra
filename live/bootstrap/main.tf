@@ -16,6 +16,10 @@ data "aws_partition" "current" {}
 
 locals {
   partition = data.aws_partition.current.partition
+
+  # The data role of a site is named here once: the role is created with this name, and the key policy of the signing
+  # key names the same string. It is not a reference, so the key and the role do not depend on each other.
+  data_role_name = { for site, s in var.sites : site => "${replace(site, ".", "-")}-github-data" if s.data_prefix != null }
 }
 
 module "state_bucket" {
@@ -67,6 +71,9 @@ module "manifest_key" {
 
   alias_name  = "${replace(each.key, ".", "-")}-manifest-signing"
   description = "Signs the timetable manifest (data/latest.json) of ${each.key}"
+
+  # Only the data role signs; the key policy denies kms:Sign to every other principal. sign_manifest needs data_prefix, so the name exists.
+  signer_role_arn = "arn:${local.partition}:iam::${var.aws_account_id}:role/${local.data_role_name[each.key]}"
 }
 
 # The second publisher of a site whose data is built on a schedule: main branch, one prefix, no invalidation.
@@ -75,7 +82,7 @@ module "data_role" {
   source   = "../../modules/github-deploy-role"
   for_each = { for site, s in var.sites : site => s if s.data_prefix != null }
 
-  role_name            = "${replace(each.key, ".", "-")}-github-data"
+  role_name            = local.data_role_name[each.key]
   oidc_provider_arn    = aws_iam_openid_connect_provider.github.arn
   github_repository    = each.value.repository
   github_owner_id      = each.value.owner_id

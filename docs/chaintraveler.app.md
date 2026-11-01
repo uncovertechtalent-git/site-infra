@@ -162,18 +162,20 @@ In the order that keeps every step harmless on its own:
 1. In the operator's `bootstrap.tfvars` set `sign_manifest = true` on the chaintraveler.app site entry. Plan, show it,
    apply, push-vars (after the apply, as in step 3). The plan adds one key, one alias, one statement on the data role.
    Run `scripts/role-boundaries-site.sh chaintraveler.app <bucket> <distribution id> "" <key arn>` (the key ARN is the output
-   `manifest_signing_key_arns`): every line `ok`.
-2. Read the public key and its id, then put both into the app (`app/keys.js`) and release the shell:
+   `manifest_signing_key_arns`): every line `ok`. Those lines prove the data role's IAM scope; the key policy's deny of
+   `kms:Sign` to every other principal is not read by the policy simulator, and is held by the module's `terraform test`.
+2. Set the repository secret `SIGNING_KEY_ARN` of the app repository to the key ARN and run the Timetable workflow by hand:
+   the pointer now has `kid` and `sig`. An app that holds no public key ignores both fields, so nothing changes on a device
+   yet. Check: `curl -s https://chaintraveler.app/data/latest.json | python3 -m json.tool` shows both fields.
+3. Read the public key and its id, then put both into the app (`app/keys.js`) and release the shell:
    ```sh
    pub=$(aws kms get-public-key --key-id alias/chaintraveler-app-manifest-signing --query PublicKey --output text)
    python3 build/manifest.py kid-of "$pub"
    ```
-   An app with a key refuses a manifest that is not signed, so the shell must not ship the key before step 3 can follow
-   within the day: a device that updates the shell and then finds an unsigned manifest keeps its old timetable and says so.
-3. Set the repository secret `SIGNING_KEY_ARN` of the app repository to the key ARN and run the Timetable workflow by hand:
-   the pointer now has `kid` and `sig`.
-4. Check: `curl -s https://chaintraveler.app/data/latest.json | python3 -m json.tool` shows both fields; open the app online:
-   "Updated just now." or "Up to date.", no `signature` in the data-age line.
+   From this release on, the app refuses a manifest that is not signed by a listed key, and the published manifest already
+   is. The other order (the key in the app before the pointer is signed) opens a window in which a device that updates the
+   shell finds an unsigned manifest, keeps its old timetable, and says `signature` in the data-age line.
+4. Check: open the app online: "Updated just now." or "Up to date.", no `signature` in the data-age line.
 
 To rotate, make a second key by hand under another alias, list both public keys in `app/keys.js`, release, switch
 `SIGNING_KEY_ARN`, and remove the old key a release later. To switch signing off, remove `SIGNING_KEY_ARN` (the manifest
