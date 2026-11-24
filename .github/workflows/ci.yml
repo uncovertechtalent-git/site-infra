@@ -88,7 +88,7 @@ jobs:
       - name: Python scripts compile
         run: python3 -m py_compile scripts/*.py scripts/ci/*.py stats/*.py
 
-      - name: Unit tests of the public-output boundaries (counts-only summary, tfvars masking)
+      - name: Unit tests (public-output boundaries, site-traffic visitor classes)
         run: python3 -m unittest discover -s tests -v
 
       - name: GitHub-hosted runners only

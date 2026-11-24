@@ -49,10 +49,18 @@ NAMED_BOTS = [
     "Googlebot", "bingbot", "Applebot", "DuckDuckBot", "YandexBot", "Baiduspider", "SeznamBot",
     "facebookexternalhit", "LinkedInBot", "Twitterbot", "Slackbot", "Discordbot", "TelegramBot",
     "WhatsApp", "redditbot", "Mastodon",
-    # SEO tools and our own checks.
-    "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot", "site-infra-parity",
+    # SEO tools.
+    "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
 ]
-NAMED = [(name, name.lower()) for name in NAMED_BOTS]
+# Our own clients, as (name, User-Agent token): the parity check, the /map/ graph crawler in the
+# machinebehavior.io deploy, and the home server's deploy exporter. Named so dashboards can leave them
+# out; unnamed, the crawler counted as "other" and the exporter (no bot word in its User-Agent) as human.
+OWN_AGENTS = [
+    ("site-infra-parity", "site-infra-parity"),
+    ("site-map-crawler", "site-map crawler"),
+    ("deploy-exporter", "deploy-exporter"),
+]
+NAMED = [(name, name.lower()) for name in NAMED_BOTS] + OWN_AGENTS
 GENERIC_BOT = re.compile(
     r"bot\b|bot/|crawl|spider|slurp|scan|monitor|preview|headless|lighthouse|uptime|"
     r"python|curl/|wget/|httpx|go-http|java/|okhttp|axios|node-fetch|libwww|feed|archiver",
