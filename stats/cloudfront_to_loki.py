@@ -48,6 +48,9 @@ RENDER_AFTER = 60
 RENDER_ASSETS = (".css", ".js", ".woff2", ".woff")
 KEEP_RAW_DAYS = int(os.environ.get("KEEP_RAW_DAYS", "32"))  # S3 keeps 30 days; older local copies go
 MAX_AGE = 6 * 86400  # Loki rejects samples older than 7 days
+# Days of log folders the S3 sync fetches: MAX_AGE plus a margin for late log delivery. Older files could not
+# ship anyway; fetching them again after KEEP_RAW_DAYS removed the local copy made a delete/download loop.
+SYNC_DAYS = 8
 BATCH = 2000
 
 NAMED_BOTS = [
@@ -215,12 +218,18 @@ def ship_file(path, site, now, renderers=None):
     return shipped, too_old
 
 
+def sync_command(now):
+    """aws s3 sync of the last SYNC_DAYS UTC days only (keys are <site>/<yyyy>/<MM>/<dd>/<HH>/<file>.gz)."""
+    today = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).date()
+    days = [today - datetime.timedelta(days=n) for n in range(SYNC_DAYS)]
+    include = [arg for d in days for arg in ("--include", f"*/{d:%Y/%m/%d}/*")]
+    return ["aws", "s3", "sync", f"s3://{LOG_BUCKET}/{LOG_PREFIX}/", str(RAW_DIR), "--only-show-errors",
+            "--exclude", "*", *include]
+
+
 def main():
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        ["aws", "s3", "sync", f"s3://{LOG_BUCKET}/{LOG_PREFIX}/", str(RAW_DIR), "--only-show-errors"],
-        check=True,
-    )
+    subprocess.run(sync_command(time.time()), check=True)
     state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
     renderers = json.loads(RENDER_FILE.read_text()) if RENDER_FILE.exists() else {}
     now = time.time()

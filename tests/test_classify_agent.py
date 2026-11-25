@@ -88,5 +88,18 @@ class Rendered(unittest.TestCase):
         self.assertNotIn("rendered", self.line(record("/a/", "10:00:00", ua="LinkedInBot/1.0"), r))
 
 
+class Sync(unittest.TestCase):
+    def test_fetches_only_recent_days(self):
+        import datetime
+        now = datetime.datetime(2026, 11, 25, 0, 30, tzinfo=datetime.timezone.utc).timestamp()
+        cmd = shipper.sync_command(now)
+        self.assertEqual(cmd[cmd.index("--exclude") + 1], "*")  # exclude everything first, then include
+        days = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--include"]
+        self.assertEqual(len(days), shipper.SYNC_DAYS)
+        self.assertEqual(days[0], "*/2026/11/25/*")
+        self.assertEqual(days[-1], "*/2026/11/18/*")
+        self.assertGreater(shipper.SYNC_DAYS * 86400, shipper.MAX_AGE)  # every shippable file is fetched
+
+
 if __name__ == "__main__":
     unittest.main()
