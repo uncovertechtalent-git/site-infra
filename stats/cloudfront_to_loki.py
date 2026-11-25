@@ -9,7 +9,10 @@ Runs on the operator host from a systemd timer. Each run:
 
 What a Loki line holds: host, path, status, method, kind (page, asset, redirect,
 error), agent (human or bot), the bot's name, country, referrer host, CloudFront
-result type, bytes and time to first byte. The logs carry no IP address (the
+result type, bytes and time to first byte; a browser page view also gets "rendered":
+whether the same client (User-Agent and country) fetched a stylesheet, script or font
+within 30 minutes before or 1 minute after it. Scripts with a browser User-Agent fetch
+HTML only, so "rendered" is what separates readers from them. The logs carry no IP address (the
 distribution does not record one), and this job keeps no User-Agent string and
 no full referrer URL either: only the class, the bot name and the referrer host.
 
@@ -17,8 +20,10 @@ Idempotent: a file is marked shipped only after Loki accepted all of its lines,
 and Loki drops exact duplicates, so a failed run is repeated safely by the next.
 Standard library only; needs the AWS CLI on PATH.
 """
+import bisect
 import datetime
 import gzip
+import hashlib
 import json
 import os
 import pathlib
@@ -35,6 +40,12 @@ LOKI_URL = os.environ.get("LOKI_URL", "http://localhost:3100")
 STATE_DIR = pathlib.Path(os.environ.get("STATE_DIR", "~/.local/state/site-traffic")).expanduser()
 RAW_DIR = STATE_DIR / "raw"
 STATE_FILE = STATE_DIR / "shipped.json"
+# Hashed (site, User-Agent, country) -> stylesheet/script/font fetch times of the last RENDER_BEFORE seconds,
+# carried between runs so a page served while the browser still caches the stylesheet counts as rendered.
+RENDER_FILE = STATE_DIR / "renderers.json"
+RENDER_BEFORE = 1800  # the stylesheet is cached for 10 minutes; a reader may read longer than that
+RENDER_AFTER = 60
+RENDER_ASSETS = (".css", ".js", ".woff2", ".woff")
 KEEP_RAW_DAYS = int(os.environ.get("KEEP_RAW_DAYS", "32"))  # S3 keeps 30 days; older local copies go
 MAX_AGE = 6 * 86400  # Loki rejects samples older than 7 days
 BATCH = 2000
@@ -46,19 +57,22 @@ NAMED_BOTS = [
     "Bytespider", "CCBot", "Amazonbot", "meta-externalagent", "meta-externalfetcher",
     "MistralAI-User", "cohere-ai", "DuckAssistBot", "YouBot", "Diffbot",
     # Search engines and link previews.
-    "Googlebot", "bingbot", "Applebot", "DuckDuckBot", "YandexBot", "Baiduspider", "SeznamBot",
+    "Googlebot", "GoogleOther", "Google-InspectionTool", "bingbot", "Applebot", "DuckDuckBot", "YandexBot", "Baiduspider", "SeznamBot",
     "facebookexternalhit", "LinkedInBot", "Twitterbot", "Slackbot", "Discordbot", "TelegramBot",
     "WhatsApp", "redditbot", "Mastodon",
     # SEO tools.
     "AhrefsBot", "SemrushBot", "MJ12bot", "DotBot",
 ]
 # Our own clients, as (name, User-Agent token): the parity check, the /map/ graph crawler in the
-# machinebehavior.io deploy, and the home server's deploy exporter. Named so dashboards can leave them
+# machinebehavior.io deploy, the home server's deploy exporter, the site owner's name-count audit and the
+# house portal. Named so dashboards can leave them
 # out; unnamed, the crawler counted as "other" and the exporter (no bot word in its User-Agent) as human.
 OWN_AGENTS = [
     ("site-infra-parity", "site-infra-parity"),
     ("site-map-crawler", "site-map crawler"),
     ("deploy-exporter", "deploy-exporter"),
+    ("name-count", "name-count/"),
+    ("house-portal", "house-portal/"),
 ]
 NAMED = [(name, name.lower()) for name in NAMED_BOTS] + OWN_AGENTS
 GENERIC_BOT = re.compile(
@@ -109,17 +123,55 @@ def normalise_path(path):
     return path
 
 
-def to_line(record, site):
+def epoch_of(record):
+    stamp = datetime.datetime.strptime(f'{record["date"]} {record["time"]}', "%Y-%m-%d %H:%M:%S")
+    return stamp.replace(tzinfo=datetime.timezone.utc).timestamp()
+
+
+def client_key(record, site):
+    """A short hash of site, User-Agent and country: enough to match a page to its stylesheet, kept locally."""
+    raw = f'{site}\n{record.get("cs(User-Agent)") or ""}\n{record.get("c-country") or ""}'
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def render_asset(record):
+    """A browser fetching what it needs to draw a page: a stylesheet, script or font (2xx or 304)."""
+    status = int(record.get("sc-status") or 0)
+    path = (record.get("cs-uri-stem") or "").lower()
+    return (200 <= status < 300 or status == 304) and path.endswith(RENDER_ASSETS)
+
+
+def index_renderers(path, site, renderers):
+    """Add a log file's stylesheet/script/font fetches by browser User-Agents to renderers."""
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for raw in fh:
+            raw = raw.strip()
+            if not raw:
+                continue
+            record = json.loads(raw)
+            if render_asset(record) and classify_agent(record.get("cs(User-Agent)"))[0] == "human":
+                bisect.insort(renderers.setdefault(client_key(record, site), []), epoch_of(record))
+
+
+def rendered(record, site, epoch, renderers):
+    times = renderers.get(client_key(record, site), [])
+    i = bisect.bisect_left(times, epoch - RENDER_BEFORE)
+    return i < len(times) and times[i] <= epoch + RENDER_AFTER
+
+
+def to_line(record, site, renderers=None):
     host = (record.get("x-host-header") or site).lower()
     status = int(record.get("sc-status") or 0)
     agent, bot = classify_agent(record.get("cs(User-Agent)"))
+    kind = kind_of(status, record.get("sc-content-type"))
+    epoch = epoch_of(record)
     ttfb = record.get("time-to-first-byte")
     line = {
         "host": host,
         "path": normalise_path(record.get("cs-uri-stem")),
         "status": status,
         "method": record.get("cs-method"),
-        "kind": kind_of(status, record.get("sc-content-type")),
+        "kind": kind,
         "agent": agent,
         "bot": bot,
         "country": record.get("c-country") if record.get("c-country") not in (None, "", "-") else "unknown",
@@ -129,8 +181,8 @@ def to_line(record, site):
         "ttfb_ms": round(float(ttfb) * 1000) if ttfb not in (None, "", "-") else None,
         "id": (record.get("x-edge-request-id") or "")[:12],
     }
-    stamp = datetime.datetime.strptime(f'{record["date"]} {record["time"]}', "%Y-%m-%d %H:%M:%S")
-    epoch = stamp.replace(tzinfo=datetime.timezone.utc).timestamp()
+    if agent == "human" and kind == "page" and renderers is not None:
+        line["rendered"] = rendered(record, site, epoch, renderers)
     return epoch, agent, json.dumps(line, separators=(",", ":"))
 
 
@@ -142,14 +194,14 @@ def push(site, agent, values):
             raise RuntimeError(f"loki answered {resp.status}")
 
 
-def ship_file(path, site, now):
+def ship_file(path, site, now, renderers=None):
     streams, too_old = {}, 0
     with gzip.open(path, "rt", encoding="utf-8") as fh:
         for raw in fh:
             raw = raw.strip()
             if not raw:
                 continue
-            epoch, agent, line = to_line(json.loads(raw), site)
+            epoch, agent, line = to_line(json.loads(raw), site, renderers)
             if now - epoch > MAX_AGE:
                 too_old += 1
                 continue
@@ -170,15 +222,22 @@ def main():
         check=True,
     )
     state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
+    renderers = json.loads(RENDER_FILE.read_text()) if RENDER_FILE.exists() else {}
     now = time.time()
     files = lines = dropped = failed = 0
-    for path in sorted(RAW_DIR.rglob("*.gz")):
-        rel = str(path.relative_to(RAW_DIR))
-        if rel in state:
-            continue
-        site = rel.split("/", 1)[0]  # cloudfront/<site>/<yyyy>/<MM>/<dd>/<HH>/<file>.gz
+    # <site>/<yyyy>/<MM>/<dd>/<HH>/<file>.gz, not shipped yet
+    new = [(p, str(p.relative_to(RAW_DIR))) for p in sorted(RAW_DIR.rglob("*.gz"))]
+    new = [(p, rel, rel.split("/", 1)[0]) for p, rel in new if rel not in state]
+    # First pass: every stylesheet/script/font fetch in this run, so a page counts as rendered
+    # when its stylesheet lands in another log file of the same run.
+    for path, rel, site in new:
         try:
-            shipped, too_old = ship_file(path, site, now)
+            index_renderers(path, site, renderers)
+        except Exception as exc:  # ship_file reports the same file below
+            print(f"index failed {rel}: {exc}", file=sys.stderr)
+    for path, rel, site in new:
+        try:
+            shipped, too_old = ship_file(path, site, now, renderers)
         except Exception as exc:  # leave it unmarked; the next run retries
             failed += 1
             print(f"failed {rel}: {exc}", file=sys.stderr)
@@ -193,6 +252,12 @@ def main():
     tmp = STATE_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, sort_keys=True))
     tmp.replace(STATE_FILE)
+    # Keep only fetches recent enough to mark a page in the next runs (logs arrive minutes late).
+    cutoff = now - RENDER_BEFORE - 3600
+    renderers = {k: [t for t in v if t > cutoff] for k, v in renderers.items()}
+    tmp = RENDER_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({k: v for k, v in renderers.items() if v}, sort_keys=True))
+    tmp.replace(RENDER_FILE)
     print(f"files {files}, lines {lines}, too old {dropped}, failed {failed}")
     return 1 if failed else 0
 
