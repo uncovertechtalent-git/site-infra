@@ -67,6 +67,11 @@ class Rendered(unittest.TestCase):
         r = self.index(page, record("/style.css", "10:00:01", ctype="text/css"))
         self.assertIs(self.line(page, r)["rendered"], True)
 
+    def test_stylesheet_more_than_a_minute_later_does_not_count(self):
+        page = record("/d/", "10:00:00")
+        self.assertIs(self.line(page, self.index(record("/style.css", "10:01:00", ctype="text/css")))["rendered"], True)
+        self.assertIs(self.line(page, self.index(record("/style.css", "10:01:01", ctype="text/css")))["rendered"], False)
+
     def test_cached_stylesheet_counts_within_the_window(self):
         r = self.index(record("/style.css", "09:40:00", status="304", ctype="text/css"))
         self.assertIs(self.line(record("/b/", "10:00:00"), r)["rendered"], True)
